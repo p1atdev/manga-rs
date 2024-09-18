@@ -15,10 +15,11 @@ path = "src/main.rs"
 default = ["giga", "fuz"]
 
 giga = ["rss"]
-fuz = ["prost", "tonic", "tonic-build"]
+fuz = ["prost", "tonic", "tonic-build", "aes", "hex", "cbc", "cipher"]
 
 
 [dependencies]
+anyhow = "1.0.89"
 clap = "4.5.16"
 image = "0.25.2"
 reqwest = "0.12.7"
@@ -26,10 +27,18 @@ serde = { version = "1.0.209", features = ["derive"] }
 serde_json = "1.0.127"
 tokio = { version = "1.39.3", features = ["full"] }
 futures = "0.3.30"
+rayon = "1.10.0"
 
+# giga
 rss = { version = "2.0.8", optional = true }
+
+# fuz
 prost = { version = "0.13.2", optional = true }
 tonic = { version = "0.12.2", optional = true }
+aes = { version = "0.8.4", optional = true }
+hex = { version = "0.4.3", optional = true }
+cbc = { version = "0.1.2", optional = true }
+cipher = { version = "0.4.4", features = ["block-padding"], optional = true }
 
 [build-dependencies]
 tonic-build = { version = "0.12.2", optional = true }
