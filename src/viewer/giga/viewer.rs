@@ -152,14 +152,19 @@ mod test {
 
     #[tokio::test]
     async fn test_get_episode() {
-        let episode_ids = vec!["9324103625676410700"];
+        let episode_ids = vec![
+            "9324103625676410700",
+            "10834108156672080500",
+            "16457717013869519536",
+            "8603475606564031793",
+        ];
 
         for &episode_id in episode_ids.iter() {
             let config = ConfigBuilder::new(Website::ShonenJumpPlus).build();
             let client = Client::new(config);
             let episode = client.get_episode(episode_id).await.unwrap();
             assert_eq!(episode.id(), episode_id);
-            assert!(episode.pages().len() > 0);
+            assert!(episode.title().is_some());
 
             let page = episode.pages();
 

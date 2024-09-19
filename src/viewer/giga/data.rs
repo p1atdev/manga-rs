@@ -108,7 +108,7 @@ pub enum Episode {
         next_episode_url: Option<Url>,
         #[serde(alias = "number")]
         index: usize,
-        page_structure: EpisodePageStructure,
+        page_structure: Option<EpisodePageStructure>,
         #[serde(alias = "permalink")]
         url: Url,
         published_at: Option<DateTime<Utc>>,
@@ -180,10 +180,13 @@ impl MangaEpisode<Page> for Episode {
 
     fn pages(&self) -> Vec<Page> {
         match self {
-            Episode::ReadableProduct {
-                page_structure: EpisodePageStructure { pages, .. },
-                ..
-            } => pages.clone(),
+            Episode::ReadableProduct { page_structure, .. } => {
+                if let Some(EpisodePageStructure { pages, .. }) = page_structure {
+                    pages.clone()
+                } else {
+                    Vec::new()
+                }
+            }
         }
     }
 }
