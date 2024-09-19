@@ -24,4 +24,4 @@ Cargo.lock
 
 /target
 
-*-decrypted.jpeg
+output
