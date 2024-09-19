@@ -41,7 +41,7 @@ mod tests {
         let iv = "e8c7e042d6ba9fb85c128d5ceb64b82f";
 
         let image_path = "./playground/assets/fuz-encrypted.jpeg";
-        let output_path = "./playground/assets/fuz-decrypted.jpeg";
+        let output_path = "./playground/output/fuz-decrypted.jpeg";
 
         let encrypted_data = fs::read(image_path).expect("Failed to read the encrypted image file");
         let decrypted_data = decrypt_aes_cbc(&encrypted_data, key, iv).unwrap();

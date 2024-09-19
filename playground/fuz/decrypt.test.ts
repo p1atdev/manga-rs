@@ -45,6 +45,6 @@ Deno.test("decrypt an image", async () => {
 
     const result = await decryptAES(buffer, key, iv);
 
-    await Deno.writeFile("./playground/assets/fuz-decrypted.jpeg", new Uint8Array(result));
+    await Deno.writeFile("./playground/output/fuz-decrypted.jpeg", new Uint8Array(result));
 })
 
