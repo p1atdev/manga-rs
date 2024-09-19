@@ -28,6 +28,9 @@ serde_json = "1.0.127"
 tokio = { version = "1.39.3", features = ["full"] }
 futures = "0.3.30"
 rayon = "1.10.0"
+base64 = "0.22.1"
+chrono = { version = "0.4.38", features = ["serde"] }
+url = { version = "2.5.2", features = ["serde"] }
 
 # giga
 rss = { version = "2.0.8", optional = true }
