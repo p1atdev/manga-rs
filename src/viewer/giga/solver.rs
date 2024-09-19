@@ -55,9 +55,7 @@ impl Solver {
             }
         }
     }
-}
 
-impl ImageSolver for Solver {
     fn solve_buffer(
         &self,
         buffer: image::ImageBuffer<image::Rgb<u8>, Vec<u8>>,
@@ -92,7 +90,9 @@ impl ImageSolver for Solver {
 
         Ok(image::DynamicImage::ImageRgb8(solved_buffer))
     }
+}
 
+impl ImageSolver for Solver {
     fn solve_from_bytes(&self, bytes: Vec<u8>) -> Result<DynamicImage> {
         let image = image::load_from_memory(&bytes)?;
         let solved_image = self.solve_image(image)?;
