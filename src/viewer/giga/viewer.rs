@@ -1,12 +1,9 @@
 use anyhow::Result;
-use chrono::serde::ts_seconds_option;
-use chrono::{DateTime, Utc};
+
 use reqwest::header::{HeaderMap, HeaderValue};
-use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::auth::{Auth, EmptyAuth};
-use crate::data::MangaEpisode;
+use crate::auth::EmptyAuth;
 use crate::utils;
 use crate::viewer::giga::data::Episode;
 use crate::viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder, ViewerWebsite};
@@ -149,7 +146,7 @@ impl Client {
 
 #[cfg(test)]
 mod test {
-    use crate::data::MangaPage;
+    use crate::data::{MangaEpisode, MangaPage};
 
     use super::*;
 

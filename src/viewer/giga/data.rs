@@ -2,12 +2,11 @@ use std::fmt;
 
 use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};
-use reqwest::header::{HeaderMap, HeaderValue};
-use serde::de::{self, SeqAccess, Visitor};
+use serde::de::{SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use url::Url;
 
-use crate::data::{MangaEpisode, MangaPage, MangaSeries};
+use crate::data::{MangaEpisode, MangaPage};
 
 /// ChojuGiga viewer page struct
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
