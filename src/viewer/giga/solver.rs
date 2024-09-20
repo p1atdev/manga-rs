@@ -23,7 +23,7 @@ impl Solver {
 
 impl Solver {
     /// transforms tiles like below:
-    /// ```
+    /// ```md
     /// \ABC D     \eim D
     /// e\fg h  -> A\ij h
     /// ij\k l     Be\o l
