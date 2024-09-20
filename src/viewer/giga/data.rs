@@ -71,17 +71,19 @@ where
     deserializer.deserialize_seq(PageVisitor)
 }
 
+impl Page {
+    pub fn url(&self) -> Result<Url> {
+        match self {
+            Page::Image(ImagePage { url, .. }) => Ok(url.clone()),
+            _ => bail!("Page is not an image"),
+        }
+    }
+}
+
 impl MangaPage for Page {
     fn index(&self) -> Result<usize> {
         match self {
             Page::Image(ImagePage { index, .. }) => Ok(*index),
-            _ => bail!("Page is not an image"),
-        }
-    }
-
-    fn url(&self) -> Result<Url> {
-        match self {
-            Page::Image(ImagePage { url, .. }) => Ok(url.clone()),
             _ => bail!("Page is not an image"),
         }
     }
@@ -147,6 +149,14 @@ pub struct EpisodeSeriesInfo {
     thumbnail_url_square: Url,
 }
 
+impl Episode {
+    pub fn url(&self) -> Url {
+        match self {
+            Episode::ReadableProduct { url, .. } => url.clone(),
+        }
+    }
+}
+
 impl MangaEpisode<Page> for Episode {
     fn id(&self) -> String {
         match self {
@@ -163,18 +173,6 @@ impl MangaEpisode<Page> for Episode {
     fn title(&self) -> Option<String> {
         match self {
             Episode::ReadableProduct { title, .. } => Some(title.clone()),
-        }
-    }
-
-    fn date(&self) -> Option<DateTime<Utc>> {
-        match self {
-            Episode::ReadableProduct { published_at, .. } => *published_at,
-        }
-    }
-
-    fn url(&self) -> Url {
-        match self {
-            Episode::ReadableProduct { url, .. } => url.clone(),
         }
     }
 

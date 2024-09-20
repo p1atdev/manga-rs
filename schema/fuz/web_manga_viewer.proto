@@ -63,7 +63,7 @@ message WebMangaViewerResponse {
   repeated Tag tags = 9;
   string reward_url = 10;
   Manga manga = 11;
-  optional uint32 chapter_id = 12;
+  uint32 chapter_id = 12;// optional?
   ViewButton view_button = 13;
   bool has_app_logged_in = 14;
 
@@ -164,15 +164,18 @@ message ViewerPage {
 
   message Image {
     string image_url = 1;
-    string url_scheme = 2;
-    string iv = 3;
-    string encryption_key = 4;
+    optional string url_scheme = 2;
+
+    optional string iv = 3;
+    optional string encryption_key = 4;
+
     uint32 image_width = 5;
     uint32 image_height = 6;
-    bool is_extra_page = 7;
-    uint32 extra_id = 8;
-    uint32 extra_index = 9;
-    uint32 extra_slot_id = 10;
+
+    optional bool is_extra_page = 7;
+    optional uint32 extra_id = 8;
+    optional uint32 extra_index = 9;
+    optional uint32 extra_slot_id = 10;
   }
 
   message WebView {
@@ -187,7 +190,7 @@ message ViewerPage {
 message Chapter {
   uint32 chapter_id = 1;
   string chapter_main_name = 2;
-  string shapter_sub_name = 3;
+  optional string shapter_sub_name = 3;
   string thumbnail_url = 4;
   optional PointConsumption point_consumption = 5;
   uint32 number_of_comments = 6;

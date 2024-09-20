@@ -10,7 +10,7 @@ use crate::auth::EmptyAuth;
 use crate::utils;
 use crate::viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder, ViewerWebsite};
 
-use super::data::web_manga_viewer;
+use super::data::{web_manga_viewer, Episode};
 
 pub enum Website {
     ComicFuz,
@@ -181,10 +181,6 @@ impl Client {
             .post(url, message.encode_to_vec(), Some(headers))
             .await?;
         let bytes = res.bytes().await?;
-        // // decode base64
-        let base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-        println!("{}", base64);
-
         let message = prost::Message::decode(bytes)?;
         Ok(message)
     }
@@ -198,18 +194,33 @@ impl Client {
     }
 
     /// Get episode
-    pub async fn get_episode(&self, episode_id: &str) -> Result<()> {
+    pub async fn get_episode(&self, episode_id: &str) -> Result<Episode> {
         let message = web_manga_viewer::WebMangaViewerRequest::free_chapter_id(episode_id.parse()?);
         let res = self.api_v1_web_manga_viewer(message).await?;
-        println!("{:?}", res);
-        Ok(())
+        let episode = Episode::from(res);
+        Ok(episode)
     }
 }
 
 #[cfg(test)]
 mod test {
+    use std::sync::Arc;
 
-    use web_manga_viewer::WebMangaViewerRequest;
+    use anyhow::bail;
+    use futures::StreamExt;
+    use rayon::{
+        iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator},
+        slice::ParallelSliceMut,
+    };
+
+    use crate::{
+        data::{MangaEpisode, MangaPage},
+        solver::ImageSolver,
+        viewer::fuz::{
+            data::{ImagePage, Page},
+            solver::Solver,
+        },
+    };
 
     use super::*;
 
@@ -223,6 +234,68 @@ mod test {
         for chapter_id in chapter_ids {
             let res = client.get_episode(chapter_id).await?;
             println!("{:?}", res);
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_fetch_and_solve() -> Result<()> {
+        let chapter_id = "2443";
+
+        let config = ConfigBuilder::default().build();
+        let client = Arc::new(Client::new(config));
+        let episode = client.get_episode(chapter_id).await?;
+
+        let pages = episode
+            .pages()
+            .into_par_iter()
+            .filter(|page| page.is_image())
+            .collect::<Vec<_>>();
+
+        println!("Downloading {} pages", pages.len());
+
+        let pages = futures::stream::iter(pages)
+            .map(|page| {
+                let client = client.clone();
+                tokio::spawn(async move {
+                    let url = client.image_url(page.image_path()?)?;
+                    let res = client.get(url).await?;
+                    let bytes = res.bytes().await?;
+
+                    Result::<_>::Ok((bytes, page))
+                })
+            })
+            .buffer_unordered(4)
+            .map(|pair| pair?)
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?;
+
+        println!("Solving {} pages", pages.len());
+
+        let mut images = pages
+            .par_iter()
+            .map(|(bytes, page)| {
+                if let Page::Image(img) = page {
+                    println!("Solving page {}", page.index()?);
+                    println!("page: {:?}", page);
+                    let solver = Solver::new(img.encryption_key(), img.encryption_iv());
+                    let image = solver.solve_from_bytes(bytes)?;
+                    Result::<_>::Ok((image, page.index()?))
+                } else {
+                    bail!("Page is not an image")
+                }
+            })
+            .collect::<Result<Vec<_>>>()?;
+        images.par_sort_by_key(|(_, index)| *index);
+
+        println!("Saving {} pages", images.len());
+
+        std::fs::create_dir_all("playground/output/fuz_solve")?;
+        for (image, index) in images {
+            image.save(format!("playground/output/fuz_solve/{}.jpg", index))?;
         }
 
         Ok(())

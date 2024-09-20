@@ -240,7 +240,7 @@ mod test {
                 Result::<_>::Ok((image, index))
             })
             .collect::<Result<Vec<_>>>()?;
-        images.par_sort_by(|(_, a_index), (_, b_index)| a_index.cmp(b_index));
+        images.par_sort_by_key(|(_, index)| *index);
 
         println!("Saving {} pages", images.len());
 
