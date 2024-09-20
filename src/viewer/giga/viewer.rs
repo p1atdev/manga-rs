@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::Response;
 use url::Url;
 
 use crate::auth::EmptyAuth;
@@ -114,7 +115,7 @@ impl ViewerClient<Config> for Client {
         Self { client, config }
     }
 
-    async fn fetch_raw(&self, url: &str, method: reqwest::Method) -> Result<String> {
+    async fn fetch_raw(&self, url: Url, method: reqwest::Method) -> Result<Response> {
         let headers = self.config.create_header()?;
         let res = self
             .client
@@ -123,7 +124,7 @@ impl ViewerClient<Config> for Client {
             .send()
             .await?
             .error_for_status()?;
-        Ok(res.text().await?)
+        Ok(res)
     }
 }
 
@@ -138,15 +139,28 @@ impl Client {
     /// Get episode
     pub async fn get_episode(&self, episode_id: &str) -> Result<Episode> {
         let url = self.compose_episode_url(episode_id);
-        let res = self.fetch_raw(url.as_str(), reqwest::Method::GET).await?;
-        let episode: Episode = serde_json::from_str(&res)?;
+        let res = self.fetch_raw(url, reqwest::Method::GET).await?;
+        let episode: Episode = serde_json::from_slice(&res.bytes().await?)?;
         Ok(episode)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::data::{MangaEpisode, MangaPage};
+    use std::sync::Arc;
+
+    use futures::StreamExt as _;
+    use rayon::{
+        iter::{IntoParallelRefIterator, ParallelIterator},
+        slice::ParallelSliceMut,
+    };
+    use reqwest::Method;
+
+    use crate::{
+        data::{MangaEpisode, MangaPage},
+        solver::ImageSolver,
+        viewer::giga::solver::Solver,
+    };
 
     use super::*;
 
@@ -174,5 +188,59 @@ mod test {
                 println!("{}: {}", index, url);
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_get_and_solve_pages() -> Result<()> {
+        let episode_id = "9324103625676410700";
+
+        let config = ConfigBuilder::new(Website::ShonenJumpPlus).build();
+        let client = Arc::new(Client::new(config));
+        let episode = client.get_episode(episode_id).await?;
+
+        let pages = episode.pages();
+
+        println!("Downloading {} pages", pages.len());
+
+        let pages = futures::stream::iter(pages)
+            .map(|page| {
+                let client = client.clone();
+
+                tokio::spawn(async move {
+                    let url = page.url()?;
+                    let res = client.fetch_raw(url, Method::GET).await?;
+                    let bytes = res.bytes().await?;
+
+                    Result::<_>::Ok((bytes, page))
+                })
+            })
+            .buffer_unordered(4)
+            .map(|pair| pair?)
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?;
+
+        println!("Solving {} pages", pages.len());
+
+        let solver = Arc::new(Solver::new());
+        let mut images = pages
+            .par_iter()
+            .map(|(bytes, page)| {
+                let image = solver.solve_from_bytes(bytes)?;
+                let index = page.index()?;
+                Result::<_>::Ok((image, index))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        images.par_sort_by(|(_, a_index), (_, b_index)| a_index.cmp(b_index));
+
+        println!("Saving {} pages", images.len());
+
+        std::fs::create_dir_all("playground/output/giga_solve")?;
+        for (image, index) in images {
+            image.save(format!("playground/output/giga_solve/{}.png", index))?;
+        }
+
+        Ok(())
     }
 }

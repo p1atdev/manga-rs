@@ -6,7 +6,7 @@ pub mod giga;
 use std::future::Future;
 
 use anyhow::Result;
-use reqwest::header::HeaderMap;
+use reqwest::{header::HeaderMap, Response};
 use url::Url;
 
 use crate::auth::Auth;
@@ -35,9 +35,9 @@ pub trait ViewerClient<V: ViewerConfig> {
 
     fn fetch_raw(
         &self,
-        url: &str,
+        url: Url,
         method: reqwest::Method,
-    ) -> impl Future<Output = Result<String>> + Send;
+    ) -> impl Future<Output = Result<Response>> + Send;
 }
 
 pub trait ViewerWebsite {

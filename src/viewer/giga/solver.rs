@@ -93,8 +93,8 @@ impl Solver {
 }
 
 impl ImageSolver for Solver {
-    fn solve_from_bytes(&self, bytes: Vec<u8>) -> Result<DynamicImage> {
-        let image = image::load_from_memory(&bytes)?;
+    fn solve_from_bytes<B: AsRef<[u8]>>(&self, bytes: B) -> Result<DynamicImage> {
+        let image = image::load_from_memory(bytes.as_ref())?;
         let solved_image = self.solve_image(image)?;
 
         Ok(solved_image)
