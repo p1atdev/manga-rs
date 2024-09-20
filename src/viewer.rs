@@ -33,11 +33,28 @@ pub trait ViewerConfigBuilder<V: ViewerConfig, A: Auth> {
 pub trait ViewerClient<V: ViewerConfig> {
     fn new(config: V) -> Self;
 
-    fn fetch_raw(
+    fn fetch_raw<B: Into<reqwest::Body> + Send>(
         &self,
         url: Url,
         method: reqwest::Method,
+        body: Option<B>,
+        headers: Option<HeaderMap>,
     ) -> impl Future<Output = Result<Response>> + Send;
+
+    /// simple GET request
+    fn get(&self, url: Url) -> impl std::future::Future<Output = Result<Response>> + Send {
+        self.fetch_raw::<reqwest::Body>(url, reqwest::Method::GET, None, None)
+    }
+
+    /// simple POST request
+    fn post<B: Into<reqwest::Body> + Send>(
+        &self,
+        url: Url,
+        body: B,
+        headers: Option<HeaderMap>,
+    ) -> impl std::future::Future<Output = Result<Response>> + Send {
+        self.fetch_raw::<reqwest::Body>(url, reqwest::Method::POST, Some(body.into()), headers)
+    }
 }
 
 pub trait ViewerWebsite {

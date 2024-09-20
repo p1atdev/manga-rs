@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::Response;
 use url::Url;
 
@@ -59,7 +59,7 @@ impl ViewerConfig for Config {
     fn create_header(&self) -> Result<HeaderMap> {
         let mut headers = HeaderMap::new();
         headers.insert(
-            "User-Agent",
+            header::USER_AGENT,
             HeaderValue::from_str(&utils::UserAgent::Bot.value())?,
         );
         Ok(headers)
@@ -115,15 +115,24 @@ impl ViewerClient<Config> for Client {
         Self { client, config }
     }
 
-    async fn fetch_raw(&self, url: Url, method: reqwest::Method) -> Result<Response> {
-        let headers = self.config.create_header()?;
-        let res = self
+    async fn fetch_raw<B: Into<reqwest::Body> + Send>(
+        &self,
+        url: Url,
+        method: reqwest::Method,
+        body: Option<B>,
+        headers: Option<HeaderMap>,
+    ) -> Result<Response> {
+        let mut req = self
             .client
             .request(method, url)
-            .headers(headers)
-            .send()
-            .await?
-            .error_for_status()?;
+            .headers(self.config.create_header()?);
+        if let Some(headers) = headers {
+            req = req.headers(headers);
+        }
+        if let Some(body) = body {
+            req = req.body(body);
+        }
+        let res = req.send().await?.error_for_status()?;
         Ok(res)
     }
 }
@@ -139,7 +148,7 @@ impl Client {
     /// Get episode
     pub async fn get_episode(&self, episode_id: &str) -> Result<Episode> {
         let url = self.compose_episode_url(episode_id);
-        let res = self.fetch_raw(url, reqwest::Method::GET).await?;
+        let res = self.get(url).await?;
         let episode: Episode = serde_json::from_slice(&res.bytes().await?)?;
         Ok(episode)
     }
@@ -154,7 +163,6 @@ mod test {
         iter::{IntoParallelRefIterator, ParallelIterator},
         slice::ParallelSliceMut,
     };
-    use reqwest::Method;
 
     use crate::{
         data::{MangaEpisode, MangaPage},
@@ -208,7 +216,7 @@ mod test {
 
                 tokio::spawn(async move {
                     let url = page.url()?;
-                    let res = client.fetch_raw(url, Method::GET).await?;
+                    let res = client.get(url).await?;
                     let bytes = res.bytes().await?;
 
                     Result::<_>::Ok((bytes, page))

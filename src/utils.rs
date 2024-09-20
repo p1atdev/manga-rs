@@ -12,3 +12,11 @@ impl UserAgent {
         .to_string()
     }
 }
+
+/// Include generated proto files
+macro_rules! include_proto {
+    ($name:literal) => {
+        include!(concat!(env!("OUT_DIR"), "/", $name, ".rs"));
+    };
+}
+pub(crate) use include_proto;

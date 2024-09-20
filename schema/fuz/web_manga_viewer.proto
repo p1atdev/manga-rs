@@ -2,150 +2,220 @@ syntax = "proto3";
 
 package fuz.web_manga_viewer;
 
+message WebMangaViewerRequest {
+  DeviceInfo device_info = 1;
+  bool use_ticket = 2;
+  UserPoint consume_point = 3;
+
+  oneof chapter_interface {
+    uint32 chapter_id = 4;
+    ChapterArgument chapter_argument = 5;
+  }
+}
+message ChapterArgument {
+  uint32 manga_id = 1;
+  Position position = 2;
+}
+
+enum Position {
+  FIRST = 0;
+  LAST = 1;
+  DETAIL = 2;
+}
+
+message DeviceInfo {
+  string secret = 1;
+  string app_ver = 2;
+  DeviceType device_type = 3;
+  string os_ver = 4;
+  bool is_tablet = 5;
+  ImageQuality image_quality = 6;
+
+  // デバイスタイプの列挙型
+  enum DeviceType {
+    IOS = 0;// iOSデバイス
+    ANDROID = 1;// Androidデバイス
+    BROWSER = 2;// ブラウザ
+  }
+
+  // 画像品質の列挙型
+  enum ImageQuality {
+    NORMAL = 0;// 標準品質
+    HIGH = 1;// 高品質
+  }
+}
+
+message UserPoint {
+  uint32 free = 1;
+  uint32 paid = 2;
+}
+
 message WebMangaViewerResponse {
-  optional UserPoint user_point = 1;
-  optional ViewerData viewer_data = 2;
-  optional bool is_comment_enabled = 3;
-  optional Sns sns = 4;
+  UserPoint user_point = 1;
+  optional ViewerData viewer_data = 2;// ビューワーデータ
+
+  bool is_comment_enabled = 3;
+  Sns sns = 4;
   repeated ChapterGroup chapters = 5;
   repeated Authorship authorships = 6;
-  optional string next_update_info = 7;
-  optional bool is_favorite = 8;
+  string next_update_info = 7;
+  bool is_favorite = 8;
   repeated Tag tags = 9;
-  optional string reward_url = 10;
-  optional Manga manga = 11;
+  string reward_url = 10;
+  Manga manga = 11;
   optional uint32 chapter_id = 12;
-  optional ViewButton view_button = 13;
+  ViewButton view_button = 13;
+  bool has_app_logged_in = 14;
 
   message ViewerData {
-    optional string viewer_title = 1;
+    string viewer_title = 1;
     repeated ViewerPage pages = 2;
-    optional int32 scroll = 3;
-    optional bool is_first_page_blank = 4;
-    optional int32 scroll_option = 5;
+    int32 scroll = 3;
+    bool is_first_page_blank = 4;
+    int32 scroll_option = 5;
+
+    enum ScrollDirection {
+      LEFT = 0;
+      RIGHT = 1;
+      VERTICAL = 2;
+      NONE = 3;
+    }
+
+    ScrollDirection scroll_direction = 6;
   }
 
   message ViewButton {
-    optional Chapter chapter = 1;
-    optional string button_title = 2;
-  }
-}
-
-message Chapter {
-  optional uint32 chapter_id = 1;
-  optional string chapter_main_name = 2;
-  optional string chapter_sub_name = 3;
-  optional string thumbnail_url = 4;
-  optional PointConsumption point_consumption = 5;
-  optional uint32 number_of_comments = 6;
-  optional uint32 number_of_likes = 7;
-  optional string updated_date = 8;
-  optional bool is_read = 9;
-  optional string end_of_rental_period = 10;
-  optional string first_page_image_url = 11;
-  optional int32 badge = 12;
-  optional string release_end_date = 13;
-}
-
-message PointConsumption {
-  optional int32 type = 1;
-  optional uint32 amount = 2;
-}
-
-message ViewerPage {
-  optional Image image = 1;
-  optional WebView webview = 2;
-  optional LastPage last_page = 3;
-  message Image {
-    optional string image_url = 1;
-    optional string url_scheme = 2;
-    optional string iv = 3;
-    optional string encryption_key = 4;
-    optional uint32 image_width = 5;
-    optional uint32 image_height = 6;
-    optional bool is_extra_page = 7;
-    optional uint32 extra_id = 8;
-    optional uint32 extra_index = 9;
-    optional uint32 extra_slot_id = 10;
-  }
-  message WebView {
-    optional string url = 1;
-  }
-  message LastPage {
-    optional uint32 i = 1;
+    Chapter chapter = 1;
+    string button_title = 2;
   }
 }
 
 message Sns {
-  optional string body = 1;
-  optional string url = 2;
+  string body = 1;
+  string url = 2;
 }
 
 message ChapterGroup {
-  optional BookIssueHeader book_issue_header = 1;
+  BookIssueHeader book_issue_header = 1;
   repeated Chapter chapters = 2;
+
   message BookIssueHeader {
-    optional string book_issue_id = 1;
-    optional string header_image_url = 2;
-    optional string text = 3;
-    optional string published_date = 4;
-    optional string campaign = 5;
+    string book_issue_id = 1;
+    string header_image_url = 2;
+    string text = 3;
+    string published_date = 4;
+    string campaign = 5;
   }
 }
 
-message Authorship {
-  optional Author author = 1;
-  optional string role = 2;
+message Author {
+  uint32 id = 1;
+  string author_name = 2;
+  string author_name_kana = 3;
+  string image_url = 4;
+  bool is_yell_enabled = 5;
+  bool is_yell_bonus_offered = 6;
 }
 
-message Author {
-  optional uint32 id = 1;
-  optional string name = 2;
-  optional string name_kana = 3;
-  optional string role = 4;
+
+message Authorship {
+  Author author = 1;
+  string role = 2;
 }
 
 message Tag {
-  optional uint32 id = 1;
-  optional string name = 2;
+  uint32 id = 1;
+  string name = 2;
 }
 
 message Manga {
-  optional uint32 id = 1;
-  optional string title = 2;
-  optional string title_kana = 3;
-  repeated Author authors = 4;
-  optional string single_list_thumbnail_url = 5;
-  optional string spread_list_thumbnail_url = 6;
-  optional string short_description = 7;
-  optional string campaign = 8;
-  optional uint32 number_of_likes = 9;
-  optional string last_updated = 10;
+  uint32 manga_id = 1;
+  string manga_name = 2;
+  string manga_name_kana = 3;
+  string main_thumbnail_url = 4;
+  string single_list_thumbnail_url = 5;
+  string short_description = 6;
+  string campaign = 7;
+  uint32 number_of_total_chapter_likes = 8;
+  uint32 number_of_favorites = 9;
+  Badge badge = 10;
+  // not 11
+  bool is_ticket_available = 12;
+  bool is_charge_needed = 13;
+  string long_description = 14;
+  string latest_updated_date = 15;
+  bool is_favorite = 16;
+  bool is_original = 17;
+  string charge_status = 18;
+
+  enum Badge {
+    NONE = 0;
+    NEW = 1;
+    UPDATE = 2;
+  }
 }
 
-message DeviceInfo {
-  optional string secret = 1;
-  optional string app_ver = 2;
-  optional uint32 device_type = 3;
-  optional string os_ver = 4;
-  optional bool is_tablet = 5;
-  optional uint32 image_quality = 6;
+message ViewerPage {
+  oneof content {
+    Image image = 1;
+    WebView webview = 2;
+    LastPage last_page = 3;
+  }
+
+  message Image {
+    string image_url = 1;
+    string url_scheme = 2;
+    string iv = 3;
+    string encryption_key = 4;
+    uint32 image_width = 5;
+    uint32 image_height = 6;
+    bool is_extra_page = 7;
+    uint32 extra_id = 8;
+    uint32 extra_index = 9;
+    uint32 extra_slot_id = 10;
+  }
+
+  message WebView {
+    string url = 1;
+  }
+
+  message LastPage {
+    // nothing
+  }
 }
 
-message UserPoint {
-  optional uint32 free = 1;
-  optional uint32 paid = 2;
+message Chapter {
+  uint32 chapter_id = 1;
+  string chapter_main_name = 2;
+  string shapter_sub_name = 3;
+  string thumbnail_url = 4;
+  optional PointConsumption point_consumption = 5;
+  uint32 number_of_comments = 6;
+  uint32 number_of_likes = 7;
+  string updated_date = 8;
+  bool is_read = 9;
+  string end_of_rental_period = 10;
+  string first_page_image_url = 11;
+  Badge badge = 12;
+  string release_end_date = 13;
+  string campaign = 14;
+
+  message PointConsumption {
+    Type type = 1;
+    uint32 amount = 2;
+
+    enum Type {
+      ANY_ITEMS = 0;
+      EVENT_OR_PAID = 1;
+      PAID_ONLY = 2;
+    }
+  }
+
+  enum Badge {
+    NONE = 0;
+    UPDATE = 1;
+    ADVANCE = 2;
+    SPECIAL = 3;
+  }
 }
 
-message ChapterArgument {
-  optional uint32 manga_id = 1;
-  optional int32 position = 2;
-}
-
-message WebMangaViewerRequest {
-  optional DeviceInfo device_info = 1;
-  optional bool use_ticket = 2;
-  optional UserPoint consume_point = 3;
-  optional uint32 chapter_id = 4;
-  optional ChapterArgument chapter_argument = 5;
-}
