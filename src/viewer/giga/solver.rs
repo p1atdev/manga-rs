@@ -32,6 +32,8 @@ impl Solver {
     ///
     /// ◣◹ -> ◺◥
     /// ```
+    ///
+    /// See playground/assets/giga-original.jpg and giga-swapped.jpg for details.
     fn swap_regions(
         &self,
         img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>,
