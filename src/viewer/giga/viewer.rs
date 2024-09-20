@@ -159,6 +159,7 @@ mod test {
     use std::sync::Arc;
 
     use futures::StreamExt as _;
+    use indicatif::ParallelProgressIterator;
     use rayon::{
         iter::{IntoParallelRefIterator, ParallelIterator},
         slice::ParallelSliceMut,
@@ -210,7 +211,9 @@ mod test {
 
         println!("Downloading {} pages", pages.len());
 
-        let pages = futures::stream::iter(pages)
+        let pbar = indicatif::ProgressBar::new(pages.len() as u64);
+        let pages = pbar
+            .wrap_stream(futures::stream::iter(pages))
             .map(|page| {
                 let client = client.clone();
 
@@ -234,6 +237,7 @@ mod test {
         let solver = Arc::new(Solver::new());
         let mut images = pages
             .par_iter()
+            .progress()
             .map(|(bytes, page)| {
                 let image = solver.solve_from_bytes(bytes)?;
                 let index = page.index()?;
@@ -244,10 +248,22 @@ mod test {
 
         println!("Saving {} pages", images.len());
 
-        std::fs::create_dir_all("playground/output/giga_solve")?;
-        for (image, index) in images {
-            image.save(format!("playground/output/giga_solve/{}.png", index))?;
-        }
+        let pbar = indicatif::ProgressBar::new(images.len() as u64);
+        tokio::fs::create_dir_all("playground/output/giga_solve").await?;
+        pbar.wrap_stream(futures::stream::iter(images))
+            .map(|(image, index)| async move {
+                tokio::spawn(async move {
+                    tokio::fs::write(
+                        format!("playground/output/giga_solve/{}.png", index),
+                        image.as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+                })
+            })
+            .buffer_unordered(16)
+            .collect::<Vec<_>>()
+            .await;
 
         Ok(())
     }

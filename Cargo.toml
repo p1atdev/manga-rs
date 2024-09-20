@@ -20,7 +20,7 @@ fuz = ["prost", "prost-build", "aes", "hex", "cbc", "cipher"]
 
 [dependencies]
 anyhow = "1.0.89"
-clap = "4.5.16"
+clap = "4.5.18"
 image = "0.25.2"
 reqwest = "0.12.7"
 serde = { version = "1.0.209", features = ["derive"] }
@@ -31,6 +31,7 @@ rayon = "1.10.0"
 base64 = "0.22.1"
 chrono = { version = "0.4.38", features = ["serde"] }
 url = { version = "2.5.2", features = ["serde"] }
+indicatif = { version = "0.17.8", features = ["futures", "rayon", "tokio"] }
 
 # giga
 rss = { version = "2.0.8", optional = true }

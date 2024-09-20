@@ -1,7 +1,5 @@
 use anyhow::Result;
 
-use base64::Engine;
-use prost::Message;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::Response;
 use url::Url;
@@ -208,6 +206,7 @@ mod test {
 
     use anyhow::bail;
     use futures::StreamExt;
+    use indicatif::{ParallelProgressIterator, ProgressIterator};
     use rayon::{
         iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator},
         slice::ParallelSliceMut,
@@ -216,10 +215,7 @@ mod test {
     use crate::{
         data::{MangaEpisode, MangaPage},
         solver::ImageSolver,
-        viewer::fuz::{
-            data::{ImagePage, Page},
-            solver::Solver,
-        },
+        viewer::fuz::{data::Page, solver::Solver},
     };
 
     use super::*;
@@ -255,14 +251,15 @@ mod test {
 
         println!("Downloading {} pages", pages.len());
 
-        let pages = futures::stream::iter(pages)
+        let pbar = indicatif::ProgressBar::new(pages.len() as u64);
+        let pages = pbar
+            .wrap_stream(futures::stream::iter(pages))
             .map(|page| {
                 let client = client.clone();
                 tokio::spawn(async move {
                     let url = client.image_url(page.image_path()?)?;
                     let res = client.get(url).await?;
                     let bytes = res.bytes().await?;
-
                     Result::<_>::Ok((bytes, page))
                 })
             })
@@ -277,6 +274,7 @@ mod test {
 
         let mut images = pages
             .par_iter()
+            .progress_count(pages.len() as u64)
             .map(|(bytes, page)| {
                 if let Page::Image(img) = page {
                     println!("Solving page {}", page.index()?);
@@ -293,10 +291,23 @@ mod test {
 
         println!("Saving {} pages", images.len());
 
-        std::fs::create_dir_all("playground/output/fuz_solve")?;
-        for (image, index) in images {
-            image.save(format!("playground/output/fuz_solve/{}.jpg", index))?;
-        }
+        let pbar = indicatif::ProgressBar::new(images.len() as u64);
+
+        tokio::fs::create_dir_all("playground/output/fuz_solve").await?;
+        pbar.wrap_stream(futures::stream::iter(images))
+            .map(|(image, index)| {
+                tokio::spawn(async move {
+                    tokio::fs::write(
+                        format!("playground/output/fuz_solve/{}.jpg", index),
+                        image.as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+                })
+            })
+            .buffer_unordered(16)
+            .collect::<Vec<_>>()
+            .await;
 
         Ok(())
     }

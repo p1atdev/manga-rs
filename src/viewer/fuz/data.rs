@@ -1,9 +1,6 @@
 use anyhow::{bail, Result};
-use url::Url;
 use web_manga_viewer::{
-    viewer_page,
-    web_manga_viewer_response::{viewer_data, ViewerData},
-    WebMangaViewerResponse,
+    viewer_page, web_manga_viewer_response::viewer_data, WebMangaViewerResponse,
 };
 
 use crate::data::{MangaEpisode, MangaPage, ScrollDirection};
