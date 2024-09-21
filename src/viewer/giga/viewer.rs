@@ -167,6 +167,8 @@ mod test {
 
     use crate::{
         data::{MangaEpisode, MangaPage},
+        io::zip::ZipWriter,
+        progress::ProgressConfig,
         solver::ImageSolver,
         viewer::giga::solver::Solver,
     };
@@ -203,6 +205,7 @@ mod test {
     async fn test_get_and_solve_pages() -> Result<()> {
         let episode_id = "9324103625676410700";
 
+        let progress = ProgressConfig::default();
         let config = ConfigBuilder::new(Website::ShonenJumpPlus).build();
         let client = Arc::new(Client::new(config));
         let episode = client.get_episode(episode_id).await?;
@@ -211,8 +214,8 @@ mod test {
 
         println!("Downloading {} pages", pages.len());
 
-        let pbar = indicatif::ProgressBar::new(pages.len() as u64);
-        let pages = pbar
+        let pages = progress
+            .build(pages.len())?
             .wrap_stream(futures::stream::iter(pages))
             .map(|page| {
                 let client = client.clone();
@@ -237,7 +240,7 @@ mod test {
         let solver = Arc::new(Solver::new());
         let mut images = pages
             .par_iter()
-            .progress()
+            .progress_with(progress.build(pages.len())?)
             .map(|(bytes, page)| {
                 let image = solver.solve_from_bytes(bytes)?;
                 let index = page.index()?;
@@ -248,9 +251,10 @@ mod test {
 
         println!("Saving {} pages", images.len());
 
-        let pbar = indicatif::ProgressBar::new(images.len() as u64);
         tokio::fs::create_dir_all("playground/output/giga_solve").await?;
-        pbar.wrap_stream(futures::stream::iter(images))
+        progress
+            .build(images.len())?
+            .wrap_stream(futures::stream::iter(images))
             .map(|(image, index)| async move {
                 tokio::spawn(async move {
                     tokio::fs::write(
@@ -264,6 +268,62 @@ mod test {
             .buffer_unordered(16)
             .collect::<Vec<_>>()
             .await;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_and_solve_and_zip_pages() -> Result<()> {
+        let episode_id = "9324103625676410700";
+
+        let progress = ProgressConfig::default();
+        let config = ConfigBuilder::new(Website::ShonenJumpPlus).build();
+        let client = Arc::new(Client::new(config));
+        let episode = client.get_episode(episode_id).await?;
+
+        let pages = episode.pages();
+
+        println!("Downloading {} pages", pages.len());
+
+        let pages = progress
+            .build(pages.len())?
+            .wrap_stream(futures::stream::iter(pages))
+            .map(|page| {
+                let client = client.clone();
+
+                tokio::spawn(async move {
+                    let url = page.url()?;
+                    let res = client.get(url).await?;
+                    let bytes = res.bytes().await?;
+
+                    Result::<_>::Ok(bytes)
+                })
+            })
+            .buffer_unordered(4)
+            .map(|bytes| bytes?)
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?;
+
+        println!("Solving {} pages", pages.len());
+
+        let solver = Arc::new(Solver::new());
+        let images = pages
+            .par_iter()
+            .progress_with(progress.build(pages.len())?)
+            .map(|bytes| {
+                let image = solver.solve_from_bytes(bytes)?;
+                Result::<_>::Ok(image)
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        println!("Saving as zip...");
+
+        let writer = ZipWriter::default();
+        writer
+            .write(images, "playground/output/giga_solve_2.zip")
+            .await?;
 
         Ok(())
     }
