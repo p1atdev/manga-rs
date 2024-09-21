@@ -12,7 +12,7 @@ use url::Url;
 use crate::auth::Auth;
 
 /// Manga viewer enum
-pub enum Viewer {
+pub enum ViewerType {
     Giga,
     Ichijin,
     #[cfg(feature = "fuz")]
