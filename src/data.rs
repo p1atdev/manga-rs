@@ -1,5 +1,4 @@
 use anyhow::Result;
-use chrono::Utc;
 use url::Url;
 
 /// A manga is a collection of series

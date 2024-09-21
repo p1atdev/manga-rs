@@ -32,8 +32,12 @@ base64 = "0.22.1"
 chrono = { version = "0.4.38", features = ["serde"] }
 url = { version = "2.5.2", features = ["serde"] }
 indicatif = { version = "0.17.8", features = ["futures", "rayon", "tokio"] }
-pdf-writer = "0.11.0"
 zip = "2.2.0"
+num_cpus = "1.16.0"
+
+# pdf
+pdf-writer = "0.11.0"
+flate2 = "1.0.33"
 
 # giga
 rss = { version = "2.0.8", optional = true }
@@ -44,7 +48,6 @@ aes = { version = "0.8.4", optional = true }
 hex = { version = "0.4.3", optional = true }
 cbc = { version = "0.1.2", optional = true }
 cipher = { version = "0.4.4", features = ["block-padding"], optional = true }
-num_cpus = "1.16.0"
 
 [build-dependencies]
 prost-build = { version = "0.13.2", optional = true }

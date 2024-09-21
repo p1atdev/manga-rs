@@ -1,6 +1,3 @@
-use core::num;
-use std::fmt::Display;
-
 use anyhow::{anyhow, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 

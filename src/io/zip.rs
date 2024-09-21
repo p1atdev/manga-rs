@@ -5,9 +5,8 @@ use std::{
 };
 
 use anyhow::Result;
-use futures::{stream, StreamExt};
+use futures::StreamExt;
 use image::DynamicImage;
-use indicatif::ProgressIterator;
 use tokio::sync::Mutex;
 use zip::{
     write::{ExtendedFileOptions, FileOptions},
@@ -56,7 +55,6 @@ impl EpisodeWriter for ZipWriter {
     /// Save images as a zip file.
     async fn write<P: AsRef<Path>>(&self, images: Vec<DynamicImage>, path: P) -> Result<()> {
         let file = std::fs::File::create(path.as_ref())?;
-
         let zip = Arc::new(Mutex::new(zip::ZipWriter::new(file)));
         let image_format = self.image_format;
         let compression_method = self.compression_method;
