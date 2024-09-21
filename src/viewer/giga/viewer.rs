@@ -9,7 +9,8 @@ use crate::utils;
 use crate::viewer::giga::data::Episode;
 use crate::viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder, ViewerWebsite};
 
-/// Preset websites of GigaViewer
+/// GigaViewer website family
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Website {
     ShonenJumpPlus,
     TonarinoYJ,
@@ -27,28 +28,51 @@ pub enum Website {
     Magcomi,
 }
 
-impl ViewerWebsite for Website {
+static HOST_TO_WEBSITE: phf::Map<&str, Website> = phf::phf_map! {
+    "shonenjumpplus.com" => Website::ShonenJumpPlus,
+    "tonarinoyj.jp" => Website::TonarinoYJ,
+    "viewer.heros-web.com" => Website::HerosWeb,
+    "comicbushi-web.com" => Website::ComicBushi,
+    "comicborder.com" => Website::ComicBorder,
+    "comic-days.com" => Website::ComicDays,
+    "comic-action.com" => Website::ComicAction,
+    "comic-ogyaaa.com" => Website::ComicOgyaaa,
+    "comic-gardo.com" => Website::ComicGardo,
+    "comic-zenon.com" => Website::ComicZenon,
+    "feelweb.jp" => Website::Feelweb,
+    "kuragebunch.com" => Website::Kuragebunch,
+    "www.sunday-webry.com" => Website::SundayWebry,
+    "magcomi.com" => Website::Magcomi,
+};
+
+impl ViewerWebsite<Website> for Website {
+    fn host(&self) -> &str {
+        match &self {
+            Website::ShonenJumpPlus => "shonenjumpplus.com",
+            Website::TonarinoYJ => "tonarinoyj.jp",
+            Website::HerosWeb => "viewer.heros-web.com",
+            Website::ComicBushi => "comicbushi-web.com",
+            Website::ComicBorder => "comicborder.com",
+            Website::ComicDays => "comic-days.com",
+            Website::ComicAction => "comic-action.com",
+            Website::ComicOgyaaa => "comic-ogyaaa.com",
+            Website::ComicGardo => "comic-gardo.com",
+            Website::ComicZenon => "comic-zenon.com",
+            Website::Feelweb => "feelweb.jp",
+            Website::Kuragebunch => "kuragebunch.com",
+            Website::SundayWebry => "www.sunday-webry.com",
+            Website::Magcomi => "magcomi.com",
+        }
+    }
+
     fn base_url(&self) -> Url {
-        let url = match &self {
-            Website::ShonenJumpPlus => "https://shonenjumpplus.com",
-            Website::TonarinoYJ => "https://tonarinoyj.jp",
-            Website::HerosWeb => "https://viewer.heros-web.com",
-            Website::ComicBushi => "https://comicbushi-web.com",
-            Website::ComicBorder => "https://comicborder.com",
-            Website::ComicDays => "https://comic-days.com",
-            Website::ComicAction => "https://comic-action.com",
-            Website::ComicOgyaaa => "https://comic-ogyaaa.com",
-            Website::ComicGardo => "https://comic-gardo.com",
-            Website::ComicZenon => "https://comic-zenon.com",
-            Website::Feelweb => "https://feelweb.jp",
-            Website::Kuragebunch => "https://kuragebunch.com",
-            Website::SundayWebry => "https://www.sunday-webry.com",
-            Website::Magcomi => "https://magcomi.com",
-        };
-        Url::parse(url).unwrap()
+        Url::parse(&format!("https://{}", self.host())).unwrap()
+    }
+
+    fn lookup(host: &str) -> Option<Website> {
+        HOST_TO_WEBSITE.get(host).map(|w| *w)
     }
 }
-
 /// viewer config
 #[derive(Debug, Clone)]
 pub struct Config {

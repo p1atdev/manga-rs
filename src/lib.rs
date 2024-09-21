@@ -3,7 +3,7 @@ pub mod data;
 pub mod io;
 pub mod parser;
 pub mod pipeline;
-pub(crate) mod progress;
+pub mod progress;
 pub mod solver;
 pub(crate) mod utils;
 pub mod viewer;

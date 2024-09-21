@@ -57,6 +57,8 @@ pub trait ViewerClient<V: ViewerConfig> {
     }
 }
 
-pub trait ViewerWebsite {
+pub trait ViewerWebsite<T> {
+    fn host(&self) -> &str;
     fn base_url(&self) -> Url;
+    fn lookup(host: &str) -> Option<T>;
 }

@@ -20,7 +20,7 @@ fuz = ["prost", "prost-build", "aes", "hex", "cbc", "cipher"]
 
 [dependencies]
 anyhow = "1.0.89"
-clap = "4.5.18"
+clap = { version = "4.5.18", features = ["derive"] }
 image = "0.25.2"
 reqwest = "0.12.7"
 serde = { version = "1.0.209", features = ["derive"] }
@@ -48,6 +48,7 @@ aes = { version = "0.8.4", optional = true }
 hex = { version = "0.4.3", optional = true }
 cbc = { version = "0.1.2", optional = true }
 cipher = { version = "0.4.4", features = ["block-padding"], optional = true }
+phf = { version = "0.11.2", features = ["macros"] }
 
 [build-dependencies]
 prost-build = { version = "0.13.2", optional = true }

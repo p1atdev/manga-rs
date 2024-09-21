@@ -10,16 +10,32 @@ use crate::viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder, ViewerWebsi
 
 use super::data::{web_manga_viewer, Episode};
 
+/// ComicFuz website family
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Website {
     ComicFuz,
 }
 
-impl ViewerWebsite for Website {
+static HOST_TO_WEBSITE: phf::Map<&str, Website> = phf::phf_map! {
+    "comic-fuz.com" => Website::ComicFuz,
+};
+
+impl ViewerWebsite<Website> for Website {
+    fn host(&self) -> &str {
+        match &self {
+            Website::ComicFuz => "comic-fuz.com",
+        }
+    }
+
     fn base_url(&self) -> Url {
         let url = match &self {
             Website::ComicFuz => "https://comic-fuz.com",
         };
         Url::parse(url).unwrap()
+    }
+
+    fn lookup(host: &str) -> Option<Website> {
+        HOST_TO_WEBSITE.get(host).map(|w| *w)
     }
 }
 
@@ -206,7 +222,7 @@ mod test {
 
     use anyhow::bail;
     use futures::StreamExt;
-    use indicatif::{ParallelProgressIterator, ProgressIterator};
+    use indicatif::ParallelProgressIterator;
     use rayon::{
         iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator},
         slice::ParallelSliceMut,
