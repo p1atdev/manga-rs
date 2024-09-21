@@ -16,6 +16,8 @@ use zip::{
 
 use crate::progress::ProgressConfig;
 
+use super::EpisodeWriter;
+
 /// Save as a zip file.
 #[derive(Debug, Clone)]
 pub struct ZipWriter {
@@ -48,44 +50,45 @@ impl ZipWriter {
             progress,
         }
     }
+}
 
+impl EpisodeWriter for ZipWriter {
     /// Save images as a zip file.
-    pub async fn write<P: AsRef<Path>>(&self, images: Vec<DynamicImage>, path: P) -> Result<()> {
+    async fn write<P: AsRef<Path>>(&self, images: Vec<DynamicImage>, path: P) -> Result<()> {
         let file = std::fs::File::create(path.as_ref())?;
 
         let zip = Arc::new(Mutex::new(zip::ZipWriter::new(file)));
         let image_format = self.image_format;
         let compression_method = self.compression_method;
 
-        let images_len = images.len();
-        let mut tasks = vec![];
-        for (i, image) in images
-            .into_iter()
+        self.progress
+            .build(images.len())?
+            .wrap_stream(futures::stream::iter(images))
             .enumerate()
-            .progress_with(self.progress.build(images_len)?)
-        {
-            let zip = zip.clone();
-            let task = tokio::spawn(async move {
+            .map(|(i, image)| {
+                tokio::task::spawn_blocking(move || {
+                    let mut bytes: Vec<u8> = Vec::new();
+                    image.write_to(&mut Cursor::new(&mut bytes), image_format)?;
+                    Result::<_>::Ok((i, bytes))
+                })
+            })
+            .buffer_unordered(self.num_threads)
+            .map(|pair| pair?)
+            .map(|pair| {
+                let zip = zip.clone();
                 let options = FileOptions::<ExtendedFileOptions>::default()
                     .compression_method(compression_method);
-                let mut bytes: Vec<u8> = Vec::new();
-                image.write_to(&mut Cursor::new(&mut bytes), image_format)?;
-
-                let mut zip = zip.lock().await;
-                zip.start_file(
-                    format!("{}.{}", i, image_format.extensions_str()[0]),
-                    options,
-                )?;
-                zip.write_all(&bytes)?;
-
-                Result::<()>::Ok(())
-            });
-            tasks.push(task);
-        }
-
-        self.progress
-            .build(tasks.len())?
-            .wrap_stream(stream::iter(tasks))
+                tokio::spawn(async move {
+                    let (i, bytes) = pair?;
+                    let mut zip = zip.lock().await;
+                    zip.start_file(
+                        format!("{}.{}", i, image_format.extensions_str()[0]),
+                        options,
+                    )?;
+                    zip.write_all(&bytes)?;
+                    Result::<_>::Ok(())
+                })
+            })
             .buffer_unordered(self.num_threads)
             .collect::<Vec<_>>()
             .await;

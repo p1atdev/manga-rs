@@ -214,6 +214,7 @@ mod test {
 
     use crate::{
         data::{MangaEpisode, MangaPage},
+        progress::ProgressConfig,
         solver::ImageSolver,
         viewer::fuz::{data::Page, solver::Solver},
     };
@@ -239,6 +240,7 @@ mod test {
     async fn test_fetch_and_solve() -> Result<()> {
         let chapter_id = "2443";
 
+        let progress = ProgressConfig::default();
         let config = ConfigBuilder::default().build();
         let client = Arc::new(Client::new(config));
         let episode = client.get_episode(chapter_id).await?;
@@ -251,8 +253,8 @@ mod test {
 
         println!("Downloading {} pages", pages.len());
 
-        let pbar = indicatif::ProgressBar::new(pages.len() as u64);
-        let pages = pbar
+        let pages = progress
+            .build(pages.len())?
             .wrap_stream(futures::stream::iter(pages))
             .map(|page| {
                 let client = client.clone();
@@ -274,7 +276,7 @@ mod test {
 
         let mut images = pages
             .par_iter()
-            .progress_count(pages.len() as u64)
+            .progress_with(progress.build(pages.len())?)
             .map(|(bytes, page)| {
                 if let Page::Image(img) = page {
                     println!("Solving page {}", page.index()?);
@@ -291,10 +293,10 @@ mod test {
 
         println!("Saving {} pages", images.len());
 
-        let pbar = indicatif::ProgressBar::new(images.len() as u64);
-
         tokio::fs::create_dir_all("playground/output/fuz_solve").await?;
-        pbar.wrap_stream(futures::stream::iter(images))
+        progress
+            .build(images.len())?
+            .wrap_stream(futures::stream::iter(images))
             .map(|(image, index)| {
                 tokio::spawn(async move {
                     tokio::fs::write(

@@ -167,7 +167,7 @@ mod test {
 
     use crate::{
         data::{MangaEpisode, MangaPage},
-        io::zip::ZipWriter,
+        io::{zip::ZipWriter, EpisodeWriter},
         progress::ProgressConfig,
         solver::ImageSolver,
         viewer::giga::solver::Solver,
