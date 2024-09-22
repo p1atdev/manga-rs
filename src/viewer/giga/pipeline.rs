@@ -25,28 +25,51 @@ use super::{
     viewer::{Client, ConfigBuilder, Website},
 };
 
+/// Pipeline for downloading an episode of ChojuGiga manga
 #[derive(Debug, Clone)]
-pub struct PipelineBuilder {
-    website: Website,
+pub struct Pipeline {
+    client: Client,
     progress: ProgressConfig,
     writer_config: WriterConifg,
     num_threads: usize,
     num_connections: usize,
 }
 
-impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for PipelineBuilder {
+impl Default for Pipeline {
     fn default() -> Self {
         Self {
-            website: Website::ShonenJumpPlus,
+            client: Client::new(ConfigBuilder::new(Website::ShonenJumpPlus).build()),
             progress: ProgressConfig::default(),
             writer_config: WriterConifg::new(SaveFormat::Raw, image::ImageFormat::Png),
             num_threads: num_cpus::get(),
             num_connections: 8,
         }
     }
+}
 
+impl Pipeline {
+    pub fn new(
+        website: Website,
+        progress: ProgressConfig,
+        writer_config: WriterConifg,
+        num_threads: usize,
+        num_connections: usize,
+    ) -> Self {
+        let client = Client::new(ConfigBuilder::new(website).build());
+        Self {
+            client,
+            progress,
+            writer_config,
+            num_threads,
+            num_connections,
+        }
+    }
+}
+
+impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for Pipeline {
     fn website(self, website: Website) -> Self {
-        Self { website, ..self }
+        let client = Client::new(ConfigBuilder::new(website).build());
+        Self { client, ..self }
     }
 
     fn progress(self, progress: ProgressConfig) -> Self {
@@ -71,45 +94,6 @@ impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for PipelineBuilde
         Self {
             num_connections,
             ..self
-        }
-    }
-
-    fn build(&self) -> Pipeline {
-        Pipeline::new(
-            self.website.clone(),
-            self.progress.clone(),
-            self.writer_config.clone(),
-            self.num_threads,
-            self.num_connections,
-        )
-    }
-}
-
-/// Pipeline for downloading an episode of ChojuGiga manga
-#[derive(Debug, Clone)]
-pub struct Pipeline {
-    client: Client,
-    progress: ProgressConfig,
-    writer_config: WriterConifg,
-    num_threads: usize,
-    num_connections: usize,
-}
-
-impl Pipeline {
-    pub fn new(
-        website: Website,
-        progress: ProgressConfig,
-        writer_config: WriterConifg,
-        num_threads: usize,
-        num_connections: usize,
-    ) -> Self {
-        let client = Client::new(ConfigBuilder::new(website).build());
-        Self {
-            client,
-            progress,
-            writer_config,
-            num_threads,
-            num_connections,
         }
     }
 }
@@ -293,8 +277,7 @@ mod test {
         let url = Url::parse("https://shonenjumpplus.com/episode/16457717013869519536")?;
         let path = "playground/output/giga_pipe_raw";
 
-        let builder = PipelineBuilder::default();
-        let pipe = builder.build();
+        let pipe = Pipeline::default();
 
         pipe.download(&url, path).await?;
         Ok(())
@@ -305,13 +288,12 @@ mod test {
         let url = Url::parse("https://shonenjumpplus.com/episode/16457717013869519536")?;
         let path = "playground/output/giga_pipe_zip.zip";
 
-        let builder = PipelineBuilder::default().writer_config(WriterConifg::new(
+        let pipe = Pipeline::default().writer_config(WriterConifg::new(
             SaveFormat::Zip {
                 compression_method: zip::CompressionMethod::Zstd,
             },
             image::ImageFormat::WebP,
         ));
-        let pipe = builder.build();
 
         pipe.download(&url, path).await?;
         Ok(())
@@ -322,9 +304,8 @@ mod test {
         let url = Url::parse("https://shonenjumpplus.com/episode/16457717013869519536")?;
         let path = "playground/output/giga_pipe_pdf.pdf";
 
-        let builder = PipelineBuilder::default()
+        let pipe = Pipeline::default()
             .writer_config(WriterConifg::new(SaveFormat::Pdf, image::ImageFormat::Jpeg));
-        let pipe = builder.build();
 
         pipe.download(&url, path).await?;
         Ok(())

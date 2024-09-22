@@ -46,14 +46,14 @@ impl WriterConifg {
 }
 
 /// Piepline for downloading manga
-pub trait EpisodePipelineBuilder<W, A: MangaPage, B: MangaEpisode<A>, P: EpisodePipeline<A, B>> {
-    fn default() -> Self;
+pub trait EpisodePipelineBuilder<W, A: MangaPage, B: MangaEpisode<A>, P: EpisodePipeline<A, B>>:
+    Default
+{
     fn website(self, website: W) -> Self;
     fn progress(self, progress: ProgressConfig) -> Self;
     fn writer_config(self, writer_config: WriterConifg) -> Self;
     fn num_threads(self, num_threads: usize) -> Self;
     fn num_connections(self, num_connections: usize) -> Self;
-    fn build(&self) -> P;
 }
 
 pub trait EpisodePipeline<P: MangaPage, E: MangaEpisode<P>> {

@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 #[cfg(feature = "fuz")]
-use manga::viewer::fuz;
-use manga::viewer::{giga, ViewerConfigBuilder};
+use manga::viewer::fuz::{self, pipeline::Pipeline as FuzPipeline};
+use manga::viewer::giga::{self, pipeline::Pipeline as GigaPipeline};
+use manga::viewer::ViewerConfigBuilder;
 use manga::{progress::ProgressConfig, viewer::ViewerWebsite};
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -15,7 +16,7 @@ struct Cli {
 
 #[derive(Debug, Clone, Subcommand)]
 enum Source {
-    Url {
+    Episode {
         /// Episode URL of the manga
         url: Url,
 
@@ -27,15 +28,6 @@ enum Source {
         #[arg(short, long, default_value = "png")]
         format: ImageFormat,
     },
-    // Episode {
-    //     /// Episode ID of the manga
-    //     #[arg(short, long)]
-    //     id: u32,
-
-    //     /// Website domain of the manga
-    //     #[arg(short, long)]
-    //     domain: String,
-    // },
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -54,7 +46,7 @@ async fn main() -> Result<()> {
     let progress = ProgressConfig::default();
 
     match cli.command {
-        Source::Url {
+        Source::Episode {
             url,
             output,
             format,
@@ -62,7 +54,7 @@ async fn main() -> Result<()> {
             if let Some(website) =
                 giga::viewer::Website::lookup(url.host_str().context("Url must have host")?)
             {
-                let config = giga::viewer::ConfigBuilder::new(website).build();
+                let pipe = GigaPipeline::default();
             }
         }
     };
