@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use anyhow::{anyhow, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -49,6 +51,25 @@ impl ProgressConfig {
                 .map_err(|_e| anyhow!("Failed to convert length into u64"))?,
         );
         pb.set_style(self.style()?);
+
+        Ok(pb)
+    }
+
+    pub fn build_with_message<T: TryInto<u64>>(
+        &self,
+        length: T,
+        message: impl Into<Cow<'static, str>>,
+    ) -> Result<ProgressBar> {
+        if !self.is_enabled() {
+            return Ok(ProgressBar::hidden());
+        }
+        let pb = ProgressBar::new(
+            length
+                .try_into()
+                .map_err(|_e| anyhow!("Failed to convert length into u64"))?,
+        );
+        pb.set_style(self.style()?);
+        pb.set_message(message);
 
         Ok(pb)
     }

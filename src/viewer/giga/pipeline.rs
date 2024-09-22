@@ -114,7 +114,7 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
 
         let pages = self
             .progress
-            .build(pages_len)?
+            .build_with_message(pages_len, "Fetching images...")?
             .wrap_stream(futures::stream::iter(pages))
             .map(|page| {
                 let client = self.client.clone();
@@ -141,7 +141,10 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         let solver = Arc::new(Solver::new());
         let images = images
             .par_iter()
-            .progress_with(self.progress.build(images.len())?)
+            .progress_with(
+                self.progress
+                    .build_with_message(images.len(), "Solving the image obfuscations...")?,
+            )
             .map(|bytes| {
                 let image = solver.solve_from_bytes(bytes)?;
                 Result::<_>::Ok(image)

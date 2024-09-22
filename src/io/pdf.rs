@@ -2,11 +2,12 @@ use std::io::{Cursor, Write};
 
 use anyhow::Result;
 use flate2::{write::ZlibEncoder, Compression};
-use image::{DynamicImage, ImageFormat};
-use indicatif::ProgressIterator;
+use image::{DynamicImage, GenericImageView, ImageFormat};
+use indicatif::{ParallelProgressIterator, ProgressIterator};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::progress::ProgressConfig;
+use crate::{progress::ProgressConfig, utils::Bytes};
 
 use super::EpisodeWriter;
 
@@ -74,21 +75,22 @@ impl PdfWriter {
 
     fn add_image_page(
         &self,
-        image: DynamicImage,
+        image_bytes: Bytes,
+        image_width: u32,
+        image_height: u32,
         pdf: &mut Pdf,
         ref_id: &mut Ref,
         page_tree_id: &Ref,
     ) -> Ref {
-        let width = image.width() as f32;
-        let height = image.height() as f32;
+        let width = image_width as f32;
+        let height = image_height as f32;
 
         let image_id = ref_id.bump().clone();
         {
             let width = width as i32;
             let height = height as i32;
 
-            let bytes = self.convert_decodable_bytes(image).unwrap();
-            let mut image = pdf.image_xobject(image_id, &bytes);
+            let mut image = pdf.image_xobject(image_id, &image_bytes);
             image.filter(self.get_image_decoder());
             image.width(width);
             image.height(height);
@@ -134,10 +136,29 @@ impl EpisodeWriter for PdfWriter {
         let (mut pdf, mut ref_id, page_tree_id) = Self::new_pdf();
 
         let images_len = images.len();
-        let page_ids = images
+        let encoded = images
+            .into_par_iter()
+            .progress_with(
+                self.progress
+                    .build_with_message(images_len, "Encoding images...")?,
+            )
+            .map(|image| {
+                let (width, height) = image.dimensions();
+                let image_bytes = self.convert_decodable_bytes(image)?;
+                Result::<_>::Ok((image_bytes, width, height))
+            })
+            .map(|pair| pair.unwrap())
+            .collect::<Vec<_>>();
+
+        let page_ids = encoded
             .into_iter()
-            .progress_with(self.progress.build(images_len)?)
-            .map(|image| self.add_image_page(image, &mut pdf, &mut ref_id, &page_tree_id))
+            .progress_with(
+                self.progress
+                    .build_with_message(images_len, "Building a PDF...")?,
+            )
+            .map(|(bytes, width, height)| {
+                self.add_image_page(bytes, width, height, &mut pdf, &mut ref_id, &page_tree_id)
+            })
             .collect::<Vec<_>>();
 
         pdf.pages(page_tree_id)

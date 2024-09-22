@@ -60,7 +60,7 @@ impl EpisodeWriter for ZipWriter {
         let compression_method = self.compression_method;
 
         self.progress
-            .build(images.len())?
+            .build_with_message(images.len(), "Writing the zip...")?
             .wrap_stream(futures::stream::iter(images))
             .enumerate()
             .map(|(i, image)| {

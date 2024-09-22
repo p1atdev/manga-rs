@@ -49,7 +49,7 @@ impl EpisodeWriter for RawWriter {
         let path = Arc::new(path.as_ref().to_path_buf());
 
         self.progress
-            .build(images.len())?
+            .build_with_message(images.len(), "Writing images...")?
             .wrap_stream(futures::stream::iter(images))
             .enumerate()
             .map(|(i, image)| {
