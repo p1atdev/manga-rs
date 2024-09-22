@@ -306,7 +306,7 @@ mod test {
 
         println!("Solving {} pages", pages.len());
 
-        let mut images = pages
+        let images = pages
             .par_iter()
             .progress_with(progress.build(pages.len())?)
             .map(|(bytes, page)| {
@@ -314,14 +314,13 @@ mod test {
                     println!("Solving page {}", page.index()?);
                     println!("page: {:?}", page);
                     let solver = Solver::new(img.encryption_key(), img.encryption_iv());
-                    let image = solver.solve_from_bytes(bytes)?;
+                    let image = solver.solve(bytes)?;
                     Result::<_>::Ok((image, page.index()?))
                 } else {
                     bail!("Page is not an image")
                 }
             })
             .collect::<Result<Vec<_>>>()?;
-        images.par_sort_by_key(|(_, index)| *index);
 
         println!("Saving {} pages", images.len());
 
@@ -331,12 +330,9 @@ mod test {
             .wrap_stream(futures::stream::iter(images))
             .map(|(image, index)| {
                 tokio::spawn(async move {
-                    tokio::fs::write(
-                        format!("playground/output/fuz_solve/{}.jpg", index),
-                        image.as_bytes(),
-                    )
-                    .await
-                    .unwrap();
+                    tokio::fs::write(format!("playground/output/fuz_solve/{}.jpg", index), image)
+                        .await
+                        .unwrap();
                 })
             })
             .buffer_unordered(16)
