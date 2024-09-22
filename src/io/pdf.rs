@@ -87,8 +87,8 @@ impl PdfWriter {
 
         let image_id = ref_id.bump().clone();
         {
-            let width = width as i32;
-            let height = height as i32;
+            let width = image_width as i32;
+            let height = image_height as i32;
 
             let mut image = pdf.image_xobject(image_id, &image_bytes);
             image.filter(self.get_image_decoder());
@@ -106,7 +106,7 @@ impl PdfWriter {
         let image_name = Name(image_name.as_bytes());
         {
             let mut page = pdf.page(page_id);
-            let area = Rect::new(0.0, 0.0, width as f32, height as f32);
+            let area = Rect::new(0.0, 0.0, width, height);
             page.media_box(area);
             page.parent(page_tree_id.clone());
             page.contents(content_id);
@@ -118,7 +118,7 @@ impl PdfWriter {
         {
             let mut content = Content::new();
             content.save_state();
-            content.transform([width as f32, 0.0, 0.0, height as f32, 0.0, 0.0]);
+            content.transform([width, 0.0, 0.0, height, 0.0, 0.0]);
             content.x_object(image_name);
             pdf.stream(content_id, &content.finish());
         }

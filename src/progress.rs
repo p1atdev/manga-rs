@@ -21,7 +21,7 @@ impl ProgressConfig {
         ProgressConfig {
             is_enabled: true,
             template:
-                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})"
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}"
                     .to_string(),
         }
     }

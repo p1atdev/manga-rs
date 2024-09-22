@@ -58,10 +58,11 @@ pub trait EpisodePipelineBuilder<W, A: MangaPage, B: MangaEpisode<A>, P: Episode
 pub trait EpisodePipeline<P: MangaPage, E: MangaEpisode<P>> {
     fn parse_episode_id(&self, url: &Url) -> Result<String>;
     fn fetch_episode(&self, episode_id: &str) -> impl Future<Output = Result<E>> + Send;
-    fn fetch_pages(&self, episode: E) -> impl Future<Output = Result<Vec<Bytes>>> + Send;
+    fn fetch_images(&self, pages: Vec<P>) -> impl Future<Output = Result<Vec<Bytes>>> + Send;
     fn solve_images(
         &self,
         images: Vec<Bytes>,
+        pages: Option<Vec<P>>,
     ) -> impl Future<Output = Result<Vec<DynamicImage>>> + Send;
     fn write_images<T: AsRef<Path>>(
         &self,

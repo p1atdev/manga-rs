@@ -1,10 +1,10 @@
 use std::{path::Path, sync::Arc};
 
-use anyhow::{Context, Ok, Result};
+use anyhow::{anyhow, bail, Context, Ok, Result};
 use futures::StreamExt;
 use image::DynamicImage;
 use indicatif::ParallelProgressIterator;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use url::Url;
 
 use crate::{
@@ -28,15 +28,17 @@ pub struct PipelineBuilder {
     progress: ProgressConfig,
     writer_config: WriterConifg,
     num_threads: usize,
+    num_connections: usize,
 }
 
 impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for PipelineBuilder {
     fn default() -> Self {
         Self {
-            website: Website::ShonenJumpPlus,
+            website: Website::ComicFuz,
             progress: ProgressConfig::default(),
             writer_config: WriterConifg::new(SaveFormat::Raw, image::ImageFormat::Png),
             num_threads: num_cpus::get(),
+            num_connections: 8,
         }
     }
 
@@ -68,6 +70,7 @@ impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for PipelineBuilde
             self.progress.clone(),
             self.writer_config.clone(),
             self.num_threads,
+            self.num_connections,
         )
     }
 }
@@ -78,6 +81,7 @@ pub struct Pipeline {
     progress: ProgressConfig,
     writer_config: WriterConifg,
     num_threads: usize,
+    num_connections: usize,
 }
 
 impl Pipeline {
@@ -86,6 +90,7 @@ impl Pipeline {
         progress: ProgressConfig,
         writer_config: WriterConifg,
         num_threads: usize,
+        num_connections: usize,
     ) -> Self {
         let client = Client::new(ConfigBuilder::new(website).build());
         Self {
@@ -93,6 +98,7 @@ impl Pipeline {
             progress,
             writer_config,
             num_threads,
+            num_connections,
         }
     }
 }
@@ -119,14 +125,14 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
                 let client = self.client.clone();
 
                 tokio::spawn(async move {
-                    let url = page.url()?;
+                    let url = client.image_url(page.image_path()?)?;
                     let res = client.get(url).await?;
                     let bytes = res.bytes().await?;
 
                     Result::<_>::Ok(bytes.into())
                 })
             })
-            .buffer_unordered(4)
+            .buffer_unordered(self.num_connections)
             .map(|bytes| bytes?)
             .collect::<Vec<_>>()
             .await
@@ -139,18 +145,29 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
     async fn solve_images(
         &self,
         images: Vec<Bytes>,
-        _pages: Option<Vec<Page>>, // does not use
+        pages: Option<Vec<Page>>,
     ) -> Result<Vec<DynamicImage>> {
-        let solver = Arc::new(Solver::new());
+        if pages.is_none() {
+            return Err(anyhow!("Pages are required to solve images for ComicFuz"));
+        }
+        let pages = pages.unwrap();
+
         let images = images
             .par_iter()
+            .zip_eq(pages.par_iter())
             .progress_with(
                 self.progress
                     .build_with_message(images.len(), "Solving the image obfuscations...")?,
             )
-            .map(|bytes| {
-                let image = solver.solve_from_bytes(bytes)?;
-                Result::<_>::Ok(image)
+            .filter(|(_, page)| page.is_image())
+            .map(|(bytes, page)| {
+                if let Page::Image(page) = page {
+                    let solver = Arc::new(Solver::new(page.encryption_key(), page.encryption_iv()));
+                    let image = solver.solve_from_bytes(bytes)?;
+                    Result::<_>::Ok(image)
+                } else {
+                    bail!("Page is not an image")
+                }
             })
             .collect::<Result<Vec<_>>>()?;
         Ok(images)
@@ -190,8 +207,13 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
     async fn download<T: AsRef<Path>>(&self, url: &Url, path: T) -> Result<()> {
         let episode_id = self.parse_episode_id(url)?;
         let episode = self.fetch_episode(&episode_id).await?;
-        let images = self.fetch_images(episode.pages()).await?;
-        let images = self.solve_images(images, None).await?;
+        let pages = episode
+            .pages()
+            .into_iter()
+            .filter(|page| page.is_image())
+            .collect::<Vec<_>>();
+        let images = self.fetch_images(pages.clone()).await?;
+        let images = self.solve_images(images, Some(pages)).await?;
         self.write_images(images, path).await?;
         Ok(())
     }
@@ -203,8 +225,8 @@ mod test {
 
     #[tokio::test]
     async fn test_pipeline_download_raw() -> Result<()> {
-        let url = Url::parse("https://shonenjumpplus.com/episode/16457717013869519536")?;
-        let path = "playground/output/giga_pipe_raw";
+        let url = Url::parse("https://comic-fuz.com/manga/viewer/44994")?;
+        let path = "playground/output/fuz_pipe_raw";
 
         let builder = PipelineBuilder::default();
         let pipe = builder.build();
@@ -215,8 +237,8 @@ mod test {
 
     #[tokio::test]
     async fn test_pipeline_download_zip() -> Result<()> {
-        let url = Url::parse("https://shonenjumpplus.com/episode/16457717013869519536")?;
-        let path = "playground/output/giga_pipe_zip.zip";
+        let url = Url::parse("https://comic-fuz.com/manga/viewer/44994")?;
+        let path = "playground/output/fuz_pipe_zip.zip";
 
         let builder = PipelineBuilder::default().writer_config(WriterConifg::new(
             SaveFormat::Zip {
@@ -232,8 +254,8 @@ mod test {
 
     #[tokio::test]
     async fn test_pipeline_download_pdf() -> Result<()> {
-        let url = Url::parse("https://shonenjumpplus.com/episode/16457717013869519536")?;
-        let path = "playground/output/giga_pipe_pdf.pdf";
+        let url = Url::parse("https://comic-fuz.com/manga/viewer/44994")?;
+        let path = "playground/output/fuz_pipe_pdf.pdf";
 
         let builder = PipelineBuilder::default()
             .writer_config(WriterConifg::new(SaveFormat::Pdf, image::ImageFormat::Jpeg));

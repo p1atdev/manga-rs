@@ -143,6 +143,7 @@ impl ViewerConfigBuilder<Config, EmptyAuth> for ConfigBuilder {
 }
 
 /// ComicFuz viewer client
+#[derive(Debug, Clone)]
 pub struct Client {
     client: reqwest::Client,
     config: Config,
@@ -191,7 +192,7 @@ impl Client {
     }
 
     /// Image url on CDN
-    fn image_url(&self, path: String) -> Result<Url> {
+    pub fn image_url(&self, path: String) -> Result<Url> {
         Ok(self.config.img_url.join(&path)?)
     }
 
