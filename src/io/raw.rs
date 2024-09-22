@@ -1,10 +1,13 @@
-use std::{io::Cursor, sync::Arc};
+use std::{io::Cursor, path::Path, sync::Arc};
 
 use anyhow::Result;
 use futures::{future, StreamExt};
-use tokio::{fs::File, io::AsyncWriteExt};
+use tokio::{
+    fs::File,
+    io::{AsyncWriteExt, BufWriter},
+};
 
-use crate::progress::ProgressConfig;
+use crate::{progress::ProgressConfig, utils};
 
 use super::EpisodeWriter;
 
@@ -38,7 +41,48 @@ impl RawWriter {
 }
 
 impl EpisodeWriter for RawWriter {
-    async fn write<P: AsRef<std::path::Path>>(
+    async fn write<P: AsRef<Path>, B: AsRef<[u8]>>(&self, images: Vec<B>, path: P) -> Result<()> {
+        let image_format = self.image_format;
+
+        tokio::fs::create_dir_all(path.as_ref()).await?;
+        let path = Arc::new(path.as_ref().to_path_buf());
+
+        let images = images
+            .into_iter()
+            .map(|bytes| bytes.as_ref().to_vec())
+            .collect::<Vec<_>>();
+
+        self.progress
+            .build_with_message(images.len(), "Writing images...")?
+            .wrap_stream(futures::stream::iter(images))
+            .enumerate()
+            .map(|pair| {
+                let path = path.clone();
+                tokio::spawn(async move {
+                    let (i, bytes) = pair;
+                    let image_name = format!("{}.{}", i, image_format.extensions_str()[0]);
+
+                    let mut file = BufWriter::new(
+                        File::options()
+                            .create(true)
+                            .write(true)
+                            .truncate(true)
+                            .open(path.join(image_name))
+                            .await?,
+                    );
+                    file.write_all(&bytes.as_ref()).await?;
+
+                    Result::<_>::Ok(())
+                })
+            })
+            .buffer_unordered(self.num_threads)
+            .collect::<Vec<_>>()
+            .await;
+
+        Ok(())
+    }
+
+    async fn write_images<P: AsRef<Path>>(
         &self,
         images: Vec<image::DynamicImage>,
         path: P,
@@ -54,8 +98,7 @@ impl EpisodeWriter for RawWriter {
             .enumerate()
             .map(|(i, image)| {
                 tokio::task::spawn_blocking(move || {
-                    let mut bytes: Vec<u8> = Vec::new();
-                    image.write_to(&mut Cursor::new(&mut bytes), image_format)?;
+                    let bytes = utils::encode_image(&image, image_format)?;
                     Result::<_>::Ok((i, bytes))
                 })
             })
@@ -67,12 +110,14 @@ impl EpisodeWriter for RawWriter {
                     let (i, bytes) = pair?;
                     let image_name = format!("{}.{}", i, image_format.extensions_str()[0]);
 
-                    let mut file = File::options()
-                        .create(true)
-                        .write(true)
-                        .truncate(true)
-                        .open(path.join(image_name))
-                        .await?;
+                    let mut file = BufWriter::new(
+                        File::options()
+                            .create(true)
+                            .write(true)
+                            .truncate(true)
+                            .open(path.join(image_name))
+                            .await?,
+                    );
                     file.write_all(&bytes).await?;
 
                     Result::<_>::Ok(())

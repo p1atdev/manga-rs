@@ -1,10 +1,12 @@
 use std::{path::Path, sync::Arc};
 
 use anyhow::{Context, Ok, Result};
-use futures::StreamExt;
+use futures::{stream, StreamExt};
 use image::DynamicImage;
 use indicatif::ParallelProgressIterator;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+};
 use url::Url;
 
 use crate::{
@@ -13,7 +15,7 @@ use crate::{
     pipeline::{EpisodePipeline, EpisodePipelineBuilder, SaveFormat, WriterConifg},
     progress::ProgressConfig,
     solver::ImageSolver,
-    utils::Bytes,
+    utils::{self, Bytes},
     viewer::{ViewerClient, ViewerConfigBuilder},
 };
 
@@ -23,11 +25,13 @@ use super::{
     viewer::{Client, ConfigBuilder, Website},
 };
 
+#[derive(Debug, Clone)]
 pub struct PipelineBuilder {
     website: Website,
     progress: ProgressConfig,
     writer_config: WriterConifg,
     num_threads: usize,
+    num_connections: usize,
 }
 
 impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for PipelineBuilder {
@@ -37,6 +41,7 @@ impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for PipelineBuilde
             progress: ProgressConfig::default(),
             writer_config: WriterConifg::new(SaveFormat::Raw, image::ImageFormat::Png),
             num_threads: num_cpus::get(),
+            num_connections: 8,
         }
     }
 
@@ -62,22 +67,32 @@ impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for PipelineBuilde
         }
     }
 
+    fn num_connections(self, num_connections: usize) -> Self {
+        Self {
+            num_connections,
+            ..self
+        }
+    }
+
     fn build(&self) -> Pipeline {
         Pipeline::new(
             self.website.clone(),
             self.progress.clone(),
             self.writer_config.clone(),
             self.num_threads,
+            self.num_connections,
         )
     }
 }
 
 /// Pipeline for downloading an episode of ChojuGiga manga
+#[derive(Debug, Clone)]
 pub struct Pipeline {
     client: Client,
     progress: ProgressConfig,
     writer_config: WriterConifg,
     num_threads: usize,
+    num_connections: usize,
 }
 
 impl Pipeline {
@@ -86,6 +101,7 @@ impl Pipeline {
         progress: ProgressConfig,
         writer_config: WriterConifg,
         num_threads: usize,
+        num_connections: usize,
     ) -> Self {
         let client = Client::new(ConfigBuilder::new(website).build());
         Self {
@@ -93,6 +109,7 @@ impl Pipeline {
             progress,
             writer_config,
             num_threads,
+            num_connections,
         }
     }
 }
@@ -111,7 +128,7 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
     async fn fetch_images(&self, pages: Vec<Page>) -> Result<Vec<Vec<u8>>> {
         let pages_len = pages.len();
 
-        let pages = self
+        let mut pages = self
             .progress
             .build_with_message(pages_len, "Fetching images...")?
             .wrap_stream(futures::stream::iter(pages))
@@ -123,40 +140,79 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
                     let res = client.get(url).await?;
                     let bytes = res.bytes().await?;
 
-                    Result::<_>::Ok(bytes.into())
+                    Result::<_>::Ok((bytes, page.index()?))
                 })
             })
-            .buffer_unordered(4)
-            .map(|bytes| bytes?)
+            .buffer_unordered(self.num_connections)
+            .map(|pair| pair?)
             .collect::<Vec<_>>()
             .await
             .into_iter()
             .collect::<Result<Vec<_>>>()?;
+        pages.sort_by_key(|(_, index)| *index);
+        let pages = pages
+            .into_iter()
+            .map(|(bytes, _)| bytes.into())
+            .collect::<Vec<_>>();
 
         Ok(pages)
     }
 
-    async fn solve_images(
+    async fn solve_image_bytes(
         &self,
         images: Vec<Bytes>,
         _pages: Option<Vec<Page>>, // does not use
-    ) -> Result<Vec<DynamicImage>> {
+    ) -> Result<Vec<Bytes>> {
         let solver = Arc::new(Solver::new());
-        let images = images
+        let mut images = images
             .par_iter()
             .progress_with(
                 self.progress
                     .build_with_message(images.len(), "Solving the image obfuscations...")?,
             )
-            .map(|bytes| {
-                let image = solver.solve_from_bytes(bytes)?;
-                Result::<_>::Ok(image)
+            .enumerate()
+            .map(|(i, bytes)| {
+                let image = solver.solve(bytes)?;
+                Result::<_>::Ok((image, i))
             })
             .collect::<Result<Vec<_>>>()?;
+        images.sort_by_key(|(_, index)| *index);
+        let images = images
+            .into_iter()
+            .map(|(bytes, _)| bytes)
+            .collect::<Vec<_>>();
+
         Ok(images)
     }
 
-    async fn write_images<T: AsRef<Path>>(&self, images: Vec<DynamicImage>, path: T) -> Result<()> {
+    async fn solve_images(
+        &self,
+        images: Vec<Bytes>,
+        _pages: Option<Vec<Page>>,
+    ) -> Result<Vec<image::DynamicImage>> {
+        let solver = Arc::new(Solver::new());
+        let mut images = images
+            .par_iter()
+            .progress_with(
+                self.progress
+                    .build_with_message(images.len(), "Solving the image obfuscations...")?,
+            )
+            .enumerate()
+            .map(|(i, bytes)| {
+                let image = solver.solve_from_bytes(bytes)?;
+                Result::<_>::Ok((image, i))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        images.sort_by_key(|(_, index)| *index);
+        let images = images
+            .into_iter()
+            .map(|(image, _)| image)
+            .collect::<Vec<_>>();
+
+        Ok(images)
+    }
+
+    async fn write_image_bytes<T: AsRef<Path>>(&self, images: Vec<Bytes>, path: T) -> Result<()> {
         let writer_config = &self.writer_config;
 
         match writer_config.save_format() {
@@ -181,6 +237,37 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
                 let writer =
                     PdfWriter::new(self.progress.clone(), self.writer_config.image_format());
                 writer.write(images, path).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn write_images<T: AsRef<Path>>(&self, images: Vec<DynamicImage>, path: T) -> Result<()> {
+        let writer_config = &self.writer_config;
+
+        match writer_config.save_format() {
+            SaveFormat::Raw => {
+                let writer = RawWriter::new(
+                    self.progress.clone(),
+                    self.writer_config.image_format(),
+                    self.num_threads,
+                );
+                writer.write_images(images, path).await?;
+            }
+            SaveFormat::Zip { compression_method } => {
+                let writer = ZipWriter::new(
+                    compression_method,
+                    self.writer_config.image_format(),
+                    self.num_threads,
+                    self.progress.clone(),
+                );
+                writer.write_images(images, path).await?;
+            }
+            SaveFormat::Pdf => {
+                let writer =
+                    PdfWriter::new(self.progress.clone(), self.writer_config.image_format());
+                writer.write_images(images, path).await?;
             }
         }
 

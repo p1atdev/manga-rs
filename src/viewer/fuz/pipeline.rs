@@ -4,7 +4,10 @@ use anyhow::{anyhow, bail, Context, Ok, Result};
 use futures::StreamExt;
 use image::DynamicImage;
 use indicatif::ParallelProgressIterator;
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::{
+    iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
+    slice::ParallelSliceMut,
+};
 use url::Url;
 
 use crate::{
@@ -23,6 +26,7 @@ use super::{
     viewer::{Client, ConfigBuilder, Website},
 };
 
+#[derive(Debug, Clone)]
 pub struct PipelineBuilder {
     website: Website,
     progress: ProgressConfig,
@@ -64,6 +68,13 @@ impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for PipelineBuilde
         }
     }
 
+    fn num_connections(self, num_connections: usize) -> Self {
+        Self {
+            num_connections,
+            ..self
+        }
+    }
+
     fn build(&self) -> Pipeline {
         Pipeline::new(
             self.website.clone(),
@@ -76,6 +87,7 @@ impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for PipelineBuilde
 }
 
 /// Pipeline for downloading an episode of ChojuGiga manga
+#[derive(Debug, Clone)]
 pub struct Pipeline {
     client: Client,
     progress: ProgressConfig,
@@ -117,7 +129,7 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
     async fn fetch_images(&self, pages: Vec<Page>) -> Result<Vec<Vec<u8>>> {
         let pages_len = pages.len();
 
-        let pages = self
+        let mut pages = self
             .progress
             .build_with_message(pages_len, "Fetching images...")?
             .wrap_stream(futures::stream::iter(pages))
@@ -129,17 +141,60 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
                     let res = client.get(url).await?;
                     let bytes = res.bytes().await?;
 
-                    Result::<_>::Ok(bytes.into())
+                    Result::<_>::Ok((bytes.into(), page.index()?))
                 })
             })
             .buffer_unordered(self.num_connections)
-            .map(|bytes| bytes?)
+            .map(|pair| pair?)
             .collect::<Vec<_>>()
             .await
             .into_iter()
             .collect::<Result<Vec<_>>>()?;
+        pages.par_sort_by_key(|(_, index)| *index);
+        let pages = pages
+            .into_iter()
+            .map(|(bytes, _)| bytes)
+            .collect::<Vec<_>>();
 
         Ok(pages)
+    }
+
+    async fn solve_image_bytes(
+        &self,
+        images: Vec<Bytes>,
+        pages: Option<Vec<Page>>,
+    ) -> Result<Vec<Bytes>> {
+        if pages.is_none() {
+            return Err(anyhow!("Pages are required to solve images for ComicFuz"));
+        }
+        let pages = pages.unwrap();
+
+        let mut images = images
+            .par_iter()
+            .zip_eq(pages.par_iter())
+            .progress_with(
+                self.progress
+                    .build_with_message(images.len(), "Solving the image obfuscations...")?,
+            )
+            .filter(|(_, page)| page.is_image())
+            .map(|(bytes, page)| {
+                if let Page::Image(image) = page {
+                    let solver =
+                        Arc::new(Solver::new(image.encryption_key(), image.encryption_iv()));
+                    let image = solver.solve(bytes)?;
+                    Result::<_>::Ok((image, page.index()?))
+                } else {
+                    bail!("Page is not an image")
+                }
+            })
+            .collect::<Result<Vec<_>>>()?;
+        images.par_sort_by_key(|(_, index)| *index);
+        let images = images
+            .into_iter()
+            .map(|(image, _)| image)
+            .collect::<Vec<_>>();
+
+        Ok(images)
     }
 
     async fn solve_images(
@@ -152,7 +207,7 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         }
         let pages = pages.unwrap();
 
-        let images = images
+        let mut images = images
             .par_iter()
             .zip_eq(pages.par_iter())
             .progress_with(
@@ -161,19 +216,26 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
             )
             .filter(|(_, page)| page.is_image())
             .map(|(bytes, page)| {
-                if let Page::Image(page) = page {
-                    let solver = Arc::new(Solver::new(page.encryption_key(), page.encryption_iv()));
+                if let Page::Image(image) = page {
+                    let solver =
+                        Arc::new(Solver::new(image.encryption_key(), image.encryption_iv()));
                     let image = solver.solve_from_bytes(bytes)?;
-                    Result::<_>::Ok(image)
+                    Result::<_>::Ok((image, page.index()?))
                 } else {
                     bail!("Page is not an image")
                 }
             })
             .collect::<Result<Vec<_>>>()?;
+        images.par_sort_by_key(|(_, index)| *index);
+        let images = images
+            .into_iter()
+            .map(|(image, _)| image)
+            .collect::<Vec<_>>();
+
         Ok(images)
     }
 
-    async fn write_images<T: AsRef<Path>>(&self, images: Vec<DynamicImage>, path: T) -> Result<()> {
+    async fn write_image_bytes<T: AsRef<Path>>(&self, images: Vec<Bytes>, path: T) -> Result<()> {
         let writer_config = &self.writer_config;
 
         match writer_config.save_format() {
@@ -204,6 +266,37 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         Ok(())
     }
 
+    async fn write_images<T: AsRef<Path>>(&self, images: Vec<DynamicImage>, path: T) -> Result<()> {
+        let writer_config = &self.writer_config;
+
+        match writer_config.save_format() {
+            SaveFormat::Raw => {
+                let writer = RawWriter::new(
+                    self.progress.clone(),
+                    self.writer_config.image_format(),
+                    self.num_threads,
+                );
+                writer.write_images(images, path).await?;
+            }
+            SaveFormat::Zip { compression_method } => {
+                let writer = ZipWriter::new(
+                    compression_method,
+                    self.writer_config.image_format(),
+                    self.num_threads,
+                    self.progress.clone(),
+                );
+                writer.write_images(images, path).await?;
+            }
+            SaveFormat::Pdf => {
+                let writer =
+                    PdfWriter::new(self.progress.clone(), self.writer_config.image_format());
+                writer.write_images(images, path).await?;
+            }
+        }
+
+        Ok(())
+    }
+
     async fn download<T: AsRef<Path>>(&self, url: &Url, path: T) -> Result<()> {
         let episode_id = self.parse_episode_id(url)?;
         let episode = self.fetch_episode(&episode_id).await?;
@@ -213,8 +306,8 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
             .filter(|page| page.is_image())
             .collect::<Vec<_>>();
         let images = self.fetch_images(pages.clone()).await?;
-        let images = self.solve_images(images, Some(pages)).await?;
-        self.write_images(images, path).await?;
+        let images = self.solve_image_bytes(images, Some(pages)).await?;
+        self.write_image_bytes(images, path).await?;
         Ok(())
     }
 }

@@ -1,13 +1,21 @@
-use std::io::{Cursor, Write};
+use std::{
+    borrow::BorrowMut,
+    io::{BufReader, BufWriter, Cursor, Read, Write},
+    path::Path,
+};
 
 use anyhow::Result;
-use flate2::{write::ZlibEncoder, Compression};
-use image::{DynamicImage, GenericImageView, ImageFormat};
+use flate2::{bufread::ZlibEncoder, Compression};
+use image::{DynamicImage, GenericImageView, ImageFormat, ImageReader};
 use indicatif::{ParallelProgressIterator, ProgressIterator};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use tokio::{fs::File, io::AsyncWriteExt};
 
-use crate::{progress::ProgressConfig, utils::Bytes};
+use crate::{
+    progress::ProgressConfig,
+    utils::{self, Bytes},
+};
 
 use super::EpisodeWriter;
 
@@ -57,18 +65,15 @@ impl PdfWriter {
         }
     }
 
-    /// Convert the image to decodable bytes on PDF
-    /// as the image format.
-    fn convert_decodable_bytes(&self, image: DynamicImage) -> Result<Vec<u8>> {
-        let mut bytes: Vec<u8> = Vec::new();
-        image.write_to(&mut Cursor::new(&mut bytes), self.image_format)?;
-
+    fn compress_image_bytes_if_needed<B: AsRef<[u8]>>(&self, bytes: B) -> Result<Bytes> {
         match self.image_format {
-            ImageFormat::Jpeg => Ok(bytes),
+            ImageFormat::Jpeg => Ok(bytes.as_ref().into()),
             _ => {
-                let mut e = ZlibEncoder::new(Vec::new(), Compression::default());
-                e.write_all(&bytes.as_ref())?;
-                Ok(e.finish()?)
+                let mut compressed = Vec::new();
+                let reader = BufReader::new(bytes.as_ref());
+                let mut encoder = ZlibEncoder::new(reader, Compression::default());
+                encoder.read_to_end(&mut compressed)?;
+                Ok(compressed)
             }
         }
     }
@@ -107,6 +112,7 @@ impl PdfWriter {
         {
             let mut page = pdf.page(page_id);
             let area = Rect::new(0.0, 0.0, width, height);
+            // let area = Rect::new(0.0, 0.0, 2400., 2400.);
             page.media_box(area);
             page.parent(page_tree_id.clone());
             page.contents(content_id);
@@ -128,13 +134,13 @@ impl PdfWriter {
 }
 
 impl EpisodeWriter for PdfWriter {
-    async fn write<P: AsRef<std::path::Path>>(
-        &self,
-        images: Vec<image::DynamicImage>,
-        path: P,
-    ) -> Result<()> {
+    async fn write<P: AsRef<Path>, B: AsRef<[u8]>>(&self, images: Vec<B>, path: P) -> Result<()> {
         let (mut pdf, mut ref_id, page_tree_id) = Self::new_pdf();
 
+        let images: Vec<Bytes> = images
+            .into_iter()
+            .map(|bytes| bytes.as_ref().into())
+            .collect();
         let images_len = images.len();
         let encoded = images
             .into_par_iter()
@@ -143,8 +149,10 @@ impl EpisodeWriter for PdfWriter {
                     .build_with_message(images_len, "Encoding images...")?,
             )
             .map(|image| {
-                let (width, height) = image.dimensions();
-                let image_bytes = self.convert_decodable_bytes(image)?;
+                // get width and height without full decode
+                let reader = ImageReader::new(Cursor::new(image.clone())).with_guessed_format()?;
+                let (width, height) = reader.into_dimensions()?;
+                let image_bytes = self.compress_image_bytes_if_needed(image)?;
                 Result::<_>::Ok((image_bytes, width, height))
             })
             .map(|pair| pair.unwrap())
@@ -166,7 +174,64 @@ impl EpisodeWriter for PdfWriter {
             .kids(page_ids);
 
         // save
-        tokio::fs::write(path, pdf.finish()).await?;
+        let mut file = File::options()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .await?;
+        file.write_all(pdf.finish().as_ref()).await?;
+
+        Ok(())
+    }
+
+    async fn write_images<P: AsRef<Path>>(
+        &self,
+        images: Vec<image::DynamicImage>,
+        path: P,
+    ) -> Result<()> {
+        let (mut pdf, mut ref_id, page_tree_id) = Self::new_pdf();
+
+        let image_format = self.image_format;
+
+        let images_len = images.len();
+        let encoded = images
+            .into_par_iter()
+            .progress_with(
+                self.progress
+                    .build_with_message(images_len, "Encoding images...")?,
+            )
+            .map(|image| {
+                let (width, height) = image.dimensions();
+                let bytes = utils::encode_image(&image, image_format)?;
+                Result::<_>::Ok((bytes, width, height))
+            })
+            .map(|pair| pair.unwrap())
+            .collect::<Vec<_>>();
+
+        let page_ids = encoded
+            .into_iter()
+            .progress_with(
+                self.progress
+                    .build_with_message(images_len, "Building a PDF...")?,
+            )
+            .map(|(bytes, width, height)| {
+                self.add_image_page(bytes, width, height, &mut pdf, &mut ref_id, &page_tree_id)
+            })
+            .collect::<Vec<_>>();
+
+        pdf.pages(page_tree_id)
+            .count(page_ids.len() as i32)
+            .kids(page_ids);
+
+        // save
+        let mut file = File::options()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .await?;
+        file.write_all(pdf.finish().as_ref()).await?;
 
         Ok(())
     }
@@ -220,7 +285,7 @@ mod test {
         // .kids(page_ids);
 
         // save
-        tokio::fs::write("playground/output/pdf/blank.pdf", pdf.finish()).await?;
+        tokio::fs::write("playground/output/blank.pdf", pdf.finish()).await?;
 
         Ok(())
     }
@@ -281,7 +346,7 @@ mod test {
             .kids(page_ids);
 
         // save
-        tokio::fs::write("playground/output/pdf/image.pdf", pdf.finish()).await?;
+        tokio::fs::write("playground/output/image.pdf", pdf.finish()).await?;
 
         Ok(())
     }

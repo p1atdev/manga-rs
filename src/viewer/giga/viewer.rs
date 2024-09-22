@@ -209,7 +209,7 @@ mod test {
 
     use crate::{
         data::{MangaEpisode, MangaPage},
-        io::{pdf::PdfWriter, zip::ZipWriter, EpisodeWriter},
+        io::{pdf::PdfWriter, raw::RawWriter, zip::ZipWriter, EpisodeWriter},
         progress::ProgressConfig,
         solver::ImageSolver,
         viewer::giga::solver::Solver,
@@ -290,26 +290,18 @@ mod test {
             })
             .collect::<Result<Vec<_>>>()?;
         images.par_sort_by_key(|(_, index)| *index);
+        let images = images
+            .into_iter()
+            .map(|(image, _)| image)
+            .collect::<Vec<_>>();
 
         println!("Saving {} pages", images.len());
 
-        tokio::fs::create_dir_all("playground/output/giga_solve").await?;
-        progress
-            .build(images.len())?
-            .wrap_stream(futures::stream::iter(images))
-            .map(|(image, index)| async move {
-                tokio::spawn(async move {
-                    tokio::fs::write(
-                        format!("playground/output/giga_solve/{}.png", index),
-                        image.as_bytes(),
-                    )
-                    .await
-                    .unwrap();
-                })
-            })
-            .buffer_unordered(16)
-            .collect::<Vec<_>>()
-            .await;
+        tokio::fs::create_dir_all("playground/output/giga_solve_raw").await?;
+        let writer = RawWriter::default();
+        writer
+            .write_images(images, "playground/output/giga_solve_raw")
+            .await?;
 
         Ok(())
     }
@@ -364,7 +356,7 @@ mod test {
 
         let writer = ZipWriter::default();
         writer
-            .write(images, "playground/output/giga_solve_2.zip")
+            .write_images(images, "playground/output/giga_solve_2.zip")
             .await?;
 
         Ok(())
@@ -420,7 +412,7 @@ mod test {
 
         let writer = PdfWriter::default();
         writer
-            .write(images, "playground/output/giga_solve_3.pdf")
+            .write_images(images, "playground/output/giga_solve_3.pdf")
             .await?;
 
         Ok(())

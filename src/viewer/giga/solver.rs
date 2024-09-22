@@ -1,7 +1,10 @@
+use std::io::{BufWriter, Write};
+
 use anyhow::Result;
 use image::{DynamicImage, ImageBuffer, Rgb};
+use pdf_writer::Finish;
 
-use crate::solver::ImageSolver;
+use crate::{solver::ImageSolver, utils::Bytes};
 
 const NUM_CELLS: u8 = 4;
 const DIVISIBLE_WITH: u8 = 8;
@@ -95,6 +98,13 @@ impl Solver {
 }
 
 impl ImageSolver for Solver {
+    fn solve<T: AsRef<[u8]>>(&self, bytes: T) -> Result<Bytes> {
+        let image = image::load_from_memory(bytes.as_ref())?;
+        let solved_image = self.solve_image(image)?;
+
+        Ok(solved_image.as_bytes().into())
+    }
+
     fn solve_from_bytes<B: AsRef<[u8]>>(&self, bytes: B) -> Result<DynamicImage> {
         let image = image::load_from_memory(bytes.as_ref())?;
         let solved_image = self.solve_image(image)?;

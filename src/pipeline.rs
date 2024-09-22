@@ -52,6 +52,7 @@ pub trait EpisodePipelineBuilder<W, A: MangaPage, B: MangaEpisode<A>, P: Episode
     fn progress(self, progress: ProgressConfig) -> Self;
     fn writer_config(self, writer_config: WriterConifg) -> Self;
     fn num_threads(self, num_threads: usize) -> Self;
+    fn num_connections(self, num_connections: usize) -> Self;
     fn build(&self) -> P;
 }
 
@@ -59,11 +60,21 @@ pub trait EpisodePipeline<P: MangaPage, E: MangaEpisode<P>> {
     fn parse_episode_id(&self, url: &Url) -> Result<String>;
     fn fetch_episode(&self, episode_id: &str) -> impl Future<Output = Result<E>> + Send;
     fn fetch_images(&self, pages: Vec<P>) -> impl Future<Output = Result<Vec<Bytes>>> + Send;
+    fn solve_image_bytes(
+        &self,
+        images: Vec<Bytes>,
+        pages: Option<Vec<P>>,
+    ) -> impl Future<Output = Result<Vec<Bytes>>> + Send;
     fn solve_images(
         &self,
         images: Vec<Bytes>,
         pages: Option<Vec<P>>,
     ) -> impl Future<Output = Result<Vec<DynamicImage>>> + Send;
+    fn write_image_bytes<T: AsRef<Path>>(
+        &self,
+        images: Vec<Bytes>,
+        path: T,
+    ) -> impl Future<Output = Result<()>>;
     fn write_images<T: AsRef<Path>>(
         &self,
         images: Vec<DynamicImage>,

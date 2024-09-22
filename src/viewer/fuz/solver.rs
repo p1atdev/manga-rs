@@ -1,7 +1,7 @@
 use anyhow::Result;
 use image::DynamicImage;
 
-use crate::solver::ImageSolver;
+use crate::{solver::ImageSolver, utils::Bytes};
 
 use super::crypto::decrypt_aes_cbc;
 
@@ -23,12 +23,16 @@ impl Solver {
 
 impl Solver {
     /// decrypts the image AES-CBC encryption
-    fn solve_buffer<B: AsRef<[u8]>>(&self, buffer: B) -> Result<Vec<u8>> {
+    fn solve_buffer<B: AsRef<[u8]>>(&self, buffer: B) -> Result<Bytes> {
         decrypt_aes_cbc(buffer.as_ref(), &self.key_hex, &self.iv_hex)
     }
 }
 
 impl ImageSolver for Solver {
+    fn solve<T: AsRef<[u8]>>(&self, bytes: T) -> Result<Bytes> {
+        self.solve_buffer(bytes)
+    }
+
     fn solve_from_bytes<B: AsRef<[u8]>>(&self, bytes: B) -> Result<DynamicImage> {
         let buffer = self.solve_buffer(bytes)?;
         let image = image::load_from_memory(&buffer)?;

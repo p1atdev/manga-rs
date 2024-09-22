@@ -13,7 +13,7 @@ use zip::{
     CompressionMethod,
 };
 
-use crate::progress::ProgressConfig;
+use crate::{progress::ProgressConfig, utils};
 
 use super::EpisodeWriter;
 
@@ -52,8 +52,45 @@ impl ZipWriter {
 }
 
 impl EpisodeWriter for ZipWriter {
+    async fn write<P: AsRef<Path>, B: AsRef<[u8]>>(&self, images: Vec<B>, path: P) -> Result<()> {
+        let file = std::fs::File::create(path.as_ref())?;
+        let zip = Arc::new(Mutex::new(zip::ZipWriter::new(file)));
+
+        let image_format = self.image_format;
+        let compression_method = self.compression_method;
+        let images = images
+            .into_iter()
+            .map(|bytes| bytes.as_ref().to_vec())
+            .collect::<Vec<_>>();
+
+        self.progress
+            .build_with_message(images.len(), "Writing the zip...")?
+            .wrap_stream(futures::stream::iter(images))
+            .enumerate()
+            .map(|pair| {
+                let zip = zip.clone();
+                let options = FileOptions::<ExtendedFileOptions>::default()
+                    .compression_method(compression_method);
+                tokio::spawn(async move {
+                    let (i, bytes) = pair;
+                    let mut zip = zip.lock().await;
+                    zip.start_file(
+                        format!("{}.{}", i, image_format.extensions_str()[0]),
+                        options,
+                    )?;
+                    zip.write_all(&bytes)?;
+                    Result::<_>::Ok(())
+                })
+            })
+            .buffer_unordered(self.num_threads)
+            .collect::<Vec<_>>()
+            .await;
+
+        Ok(())
+    }
+
     /// Save images as a zip file.
-    async fn write<P: AsRef<Path>>(&self, images: Vec<DynamicImage>, path: P) -> Result<()> {
+    async fn write_images<P: AsRef<Path>>(&self, images: Vec<DynamicImage>, path: P) -> Result<()> {
         let file = std::fs::File::create(path.as_ref())?;
         let zip = Arc::new(Mutex::new(zip::ZipWriter::new(file)));
         let image_format = self.image_format;
@@ -65,8 +102,7 @@ impl EpisodeWriter for ZipWriter {
             .enumerate()
             .map(|(i, image)| {
                 tokio::task::spawn_blocking(move || {
-                    let mut bytes: Vec<u8> = Vec::new();
-                    image.write_to(&mut Cursor::new(&mut bytes), image_format)?;
+                    let bytes = utils::encode_image(&image, image_format)?;
                     Result::<_>::Ok((i, bytes))
                 })
             })
