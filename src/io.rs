@@ -4,6 +4,7 @@ use anyhow::Result;
 use image::DynamicImage;
 
 pub mod pdf;
+pub mod raw;
 pub mod zip;
 
 /// A trait for saving manga to disk.

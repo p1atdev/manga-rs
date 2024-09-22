@@ -24,4 +24,6 @@ Cargo.lock
 
 /target
 
+.DS_Store
+
 output

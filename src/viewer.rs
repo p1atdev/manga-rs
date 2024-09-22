@@ -55,6 +55,9 @@ pub trait ViewerClient<V: ViewerConfig> {
     ) -> impl std::future::Future<Output = Result<Response>> + Send {
         self.fetch_raw::<reqwest::Body>(url, reqwest::Method::POST, Some(body.into()), headers)
     }
+
+    /// Parse episode id from url
+    fn parse_episode_id(&self, url: &Url) -> Option<String>;
 }
 
 pub trait ViewerWebsite<T> {

@@ -20,3 +20,5 @@ macro_rules! include_proto {
     };
 }
 pub(crate) use include_proto;
+
+pub(crate) type Bytes = Vec<u8>;

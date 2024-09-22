@@ -1,5 +1,8 @@
+use std::sync::LazyLock;
+
 use anyhow::Result;
 
+use regex::Regex;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::Response;
 use url::Url;
@@ -19,6 +22,10 @@ pub enum Website {
 static HOST_TO_WEBSITE: phf::Map<&str, Website> = phf::phf_map! {
     "comic-fuz.com" => Website::ComicFuz,
 };
+
+/// Episode path pattern
+static EPISODE_PATH_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"/manga/viewer/(\d+)$"#).unwrap());
 
 impl ViewerWebsite<Website> for Website {
     fn host(&self) -> &str {
@@ -166,6 +173,14 @@ impl ViewerClient<Config> for Client {
         }
         let res = req.send().await?.error_for_status()?;
         Ok(res)
+    }
+
+    /// Parse episode id from url
+    /// - https://comic-fuz.com/manga/viewer/36429
+    fn parse_episode_id(&self, url: &Url) -> Option<String> {
+        let path = url.path();
+        let captures = EPISODE_PATH_PATTERN.captures(path)?;
+        captures.get(1).map(|m| m.as_str().to_string())
     }
 }
 

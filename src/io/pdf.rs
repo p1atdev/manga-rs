@@ -19,6 +19,13 @@ pub struct PdfWriter {
 }
 
 impl PdfWriter {
+    pub fn new(progress: ProgressConfig, image_format: ImageFormat) -> Self {
+        PdfWriter {
+            progress,
+            image_format,
+        }
+    }
+
     pub fn default() -> Self {
         PdfWriter {
             progress: ProgressConfig::default(),

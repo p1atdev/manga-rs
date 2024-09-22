@@ -1,5 +1,7 @@
-use anyhow::Result;
+use std::sync::LazyLock;
 
+use anyhow::Result;
+use regex::Regex;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::Response;
 use url::Url;
@@ -10,7 +12,7 @@ use crate::viewer::giga::data::Episode;
 use crate::viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder, ViewerWebsite};
 
 /// GigaViewer website family
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Website {
     ShonenJumpPlus,
     TonarinoYJ,
@@ -26,6 +28,7 @@ pub enum Website {
     Kuragebunch,
     SundayWebry,
     Magcomi,
+    Custom(String),
 }
 
 static HOST_TO_WEBSITE: phf::Map<&str, Website> = phf::phf_map! {
@@ -45,6 +48,10 @@ static HOST_TO_WEBSITE: phf::Map<&str, Website> = phf::phf_map! {
     "magcomi.com" => Website::Magcomi,
 };
 
+/// Episode path pattern
+static EPISODE_PATH_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"/episode/(\d+)(?:\.json)?$"#).unwrap());
+
 impl ViewerWebsite<Website> for Website {
     fn host(&self) -> &str {
         match &self {
@@ -62,6 +69,7 @@ impl ViewerWebsite<Website> for Website {
             Website::Kuragebunch => "kuragebunch.com",
             Website::SundayWebry => "www.sunday-webry.com",
             Website::Magcomi => "magcomi.com",
+            Website::Custom(host) => host,
         }
     }
 
@@ -70,7 +78,7 @@ impl ViewerWebsite<Website> for Website {
     }
 
     fn lookup(host: &str) -> Option<Website> {
-        HOST_TO_WEBSITE.get(host).map(|w| *w)
+        HOST_TO_WEBSITE.get(host).map(|w| w.clone())
     }
 }
 /// viewer config
@@ -128,6 +136,7 @@ impl ViewerConfigBuilder<Config, EmptyAuth> for ConfigBuilder {
 }
 
 /// ChojuGiga viewer client
+#[derive(Debug, Clone)]
 pub struct Client {
     client: reqwest::Client,
     config: Config,
@@ -158,6 +167,15 @@ impl ViewerClient<Config> for Client {
         }
         let res = req.send().await?.error_for_status()?;
         Ok(res)
+    }
+
+    /// Get episode id from the provided url.
+    /// - https://example.com/episode/123456
+    /// - https://example.com/episode/123456.json
+    fn parse_episode_id(&self, url: &Url) -> Option<String> {
+        let path = url.path();
+        let captures = EPISODE_PATH_PATTERN.captures(path)?;
+        captures.get(1).map(|m| m.as_str().to_string())
     }
 }
 
