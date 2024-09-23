@@ -1,7 +1,7 @@
-use std::{io::Cursor, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use anyhow::Result;
-use futures::{future, StreamExt};
+use futures::StreamExt;
 use tokio::{
     fs::File,
     io::{AsyncWriteExt, BufWriter},

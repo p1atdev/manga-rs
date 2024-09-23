@@ -1,12 +1,11 @@
 use std::{
-    borrow::BorrowMut,
-    io::{BufReader, BufWriter, Cursor, Read, Write},
+    io::{BufReader, Cursor, Read},
     path::Path,
 };
 
 use anyhow::Result;
 use flate2::{bufread::ZlibEncoder, Compression};
-use image::{DynamicImage, GenericImageView, ImageFormat, ImageReader};
+use image::{GenericImageView, ImageFormat, ImageReader};
 use indicatif::{ParallelProgressIterator, ProgressIterator};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};

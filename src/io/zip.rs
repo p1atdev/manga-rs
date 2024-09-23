@@ -1,8 +1,4 @@
-use std::{
-    io::{Cursor, Write},
-    path::Path,
-    sync::Arc,
-};
+use std::{io::Write, path::Path, sync::Arc};
 
 use anyhow::Result;
 use futures::StreamExt;
