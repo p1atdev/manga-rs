@@ -16,7 +16,9 @@ pub enum SaveFormat {
     Raw,
     Zip {
         compression_method: zip::CompressionMethod,
+        extension: Option<String>,
     },
+    #[cfg(feature = "pdf")]
     Pdf,
 }
 
@@ -48,11 +50,11 @@ impl WriterConifg {
 pub trait EpisodePipelineBuilder<W, A: MangaPage, B: MangaEpisode<A>, P: EpisodePipeline<A, B>>:
     Default
 {
-    fn website(self, website: W) -> Self;
-    fn progress(self, progress: ProgressConfig) -> Self;
-    fn writer_config(self, writer_config: WriterConifg) -> Self;
-    fn num_threads(self, num_threads: usize) -> Self;
-    fn num_connections(self, num_connections: usize) -> Self;
+    fn set_website(self, website: W) -> Self;
+    fn set_progress(self, progress: ProgressConfig) -> Self;
+    fn set_writer_config(self, writer_config: WriterConifg) -> Self;
+    fn set_num_threads(self, num_threads: usize) -> Self;
+    fn set_num_connections(self, num_connections: usize) -> Self;
 }
 
 /// Pipeline to download manga
@@ -91,5 +93,9 @@ pub trait EpisodePipeline<P: MangaPage, E: MangaEpisode<P>> {
         path: T,
     ) -> impl Future<Output = Result<()>>;
 
+    /// Just download in the specified path
     fn download<T: AsRef<Path>>(&self, url: &Url, path: T) -> impl Future<Output = Result<()>>;
+
+    /// Download with a new folder or file in the specified directory
+    fn download_in<T: AsRef<Path>>(&self, url: &Url, dir: T) -> impl Future<Output = Result<()>>;
 }

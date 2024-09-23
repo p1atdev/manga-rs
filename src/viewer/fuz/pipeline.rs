@@ -6,9 +6,11 @@ use image::DynamicImage;
 use rayon::slice::ParallelSliceMut;
 use url::Url;
 
+#[cfg(feature = "pdf")]
+use crate::io::pdf::PdfWriter;
 use crate::{
     data::{MangaEpisode, MangaPage},
-    io::{pdf::PdfWriter, raw::RawWriter, zip::ZipWriter, EpisodeWriter},
+    io::{raw::RawWriter, zip::ZipWriter, EpisodeWriter},
     pipeline::{EpisodePipeline, EpisodePipelineBuilder, SaveFormat, WriterConifg},
     progress::ProgressConfig,
     solver::ImageSolver,
@@ -64,30 +66,30 @@ impl Pipeline {
 }
 
 impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for Pipeline {
-    fn website(self, website: Website) -> Self {
+    fn set_website(self, website: Website) -> Self {
         let client = Client::new(ConfigBuilder::new(website).build());
         Self { client, ..self }
     }
 
-    fn progress(self, progress: ProgressConfig) -> Self {
+    fn set_progress(self, progress: ProgressConfig) -> Self {
         Self { progress, ..self }
     }
 
-    fn writer_config(self, writer_config: WriterConifg) -> Self {
+    fn set_writer_config(self, writer_config: WriterConifg) -> Self {
         Self {
             writer_config,
             ..self
         }
     }
 
-    fn num_threads(self, num_threads: usize) -> Self {
+    fn set_num_threads(self, num_threads: usize) -> Self {
         Self {
             num_threads,
             ..self
         }
     }
 
-    fn num_connections(self, num_connections: usize) -> Self {
+    fn set_num_connections(self, num_connections: usize) -> Self {
         Self {
             num_connections,
             ..self
@@ -150,15 +152,20 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
                 );
                 writer.write(images, path).await?;
             }
-            SaveFormat::Zip { compression_method } => {
+            SaveFormat::Zip {
+                compression_method,
+                extension,
+            } => {
                 let writer = ZipWriter::new(
                     compression_method,
                     self.writer_config.image_format(),
+                    extension,
                     self.num_threads,
                     self.progress.clone(),
                 );
                 writer.write(images, path).await?;
             }
+            #[cfg(feature = "pdf")]
             SaveFormat::Pdf => {
                 let writer =
                     PdfWriter::new(self.progress.clone(), self.writer_config.image_format());
@@ -181,15 +188,20 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
                 );
                 writer.write_images(images, path).await?;
             }
-            SaveFormat::Zip { compression_method } => {
+            SaveFormat::Zip {
+                compression_method,
+                extension,
+            } => {
                 let writer = ZipWriter::new(
                     compression_method,
                     self.writer_config.image_format(),
+                    extension,
                     self.num_threads,
                     self.progress.clone(),
                 );
                 writer.write_images(images, path).await?;
             }
+            #[cfg(feature = "pdf")]
             SaveFormat::Pdf => {
                 let writer =
                     PdfWriter::new(self.progress.clone(), self.writer_config.image_format());
@@ -203,6 +215,53 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
     async fn download<T: AsRef<Path>>(&self, url: &Url, path: T) -> Result<()> {
         let episode_id = self.parse_episode_id(url)?;
         let episode = self.fetch_episode(&episode_id).await?;
+        let pages = episode
+            .pages()
+            .into_iter()
+            .filter(|page| page.is_image())
+            .collect::<Vec<_>>();
+
+        let mut images = self
+            .progress
+            .build_with_message(pages.len(), "Downloading...")?
+            .wrap_stream(stream::iter(pages))
+            .enumerate()
+            .map(|(i, page)| async move { Ok((i, page.clone(), self.fetch_image(&page).await?)) })
+            .buffer_unordered(self.num_connections)
+            .map_ok(|(i, page, image)| async move {
+                Ok((i, self.solve_image_bytes(image, Some(page)).await?))
+            })
+            .try_buffer_unordered(self.num_threads)
+            .try_collect::<Vec<_>>()
+            .await?;
+        images.par_sort_by_key(|&(i, _)| i);
+        let images = images
+            .into_iter()
+            .map(|(_, image)| image)
+            .collect::<Vec<_>>();
+
+        self.write_image_bytes(images, path).await?;
+        Ok(())
+    }
+
+    async fn download_in<T: AsRef<Path>>(&self, url: &Url, dir: T) -> Result<()> {
+        let episode_id = self.parse_episode_id(url)?;
+        let episode = self.fetch_episode(&episode_id).await?;
+
+        let mut path = dir
+            .as_ref()
+            .join(episode.title().context("Episode title not found")?);
+        match self.writer_config.save_format() {
+            SaveFormat::Raw => {} // Do nothing
+            SaveFormat::Zip { .. } => {
+                path.set_extension("zip");
+            }
+            #[cfg(feature = "pdf")]
+            SaveFormat::Pdf => {
+                path.set_extension("pdf");
+            }
+        }
+
         let pages = episode
             .pages()
             .into_iter()
@@ -253,9 +312,10 @@ mod test {
         let url = Url::parse("https://comic-fuz.com/manga/viewer/44994")?;
         let path = "playground/output/fuz_pipe_zip.zip";
 
-        let pipe = Pipeline::default().writer_config(WriterConifg::new(
+        let pipe = Pipeline::default().set_writer_config(WriterConifg::new(
             SaveFormat::Zip {
                 compression_method: zip::CompressionMethod::Zstd,
+                extension: None,
             },
             image::ImageFormat::WebP,
         ));
@@ -264,13 +324,14 @@ mod test {
         Ok(())
     }
 
+    #[cfg(feature = "pdf")]
     #[tokio::test]
     async fn test_pipeline_download_pdf() -> Result<()> {
         let url = Url::parse("https://comic-fuz.com/manga/viewer/44994")?;
         let path = "playground/output/fuz_pipe_pdf.pdf";
 
         let pipe = Pipeline::default()
-            .writer_config(WriterConifg::new(SaveFormat::Pdf, image::ImageFormat::Jpeg));
+            .set_writer_config(WriterConifg::new(SaveFormat::Pdf, image::ImageFormat::Jpeg));
 
         pipe.download(&url, path).await?;
         Ok(())

@@ -16,36 +16,44 @@ use crate::viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder, ViewerWebsi
 pub enum Website {
     ShonenJumpPlus,
     TonarinoYJ,
-    HerosWeb,
-    ComicBushi,
-    ComicBorder,
+    MagaPocket,
     ComicDays,
-    ComicAction,
-    ComicOgyaaa,
+    Kuragebunch,
+    ComicHeros,
+    ComicBorder,
     ComicGardo,
     ComicZenon,
-    Feelweb,
-    Kuragebunch,
-    SundayWebry,
     Magcomi,
+    ComicAction,
+    ComicTrail,
+    ComicGrowl,
+    Feelweb,
+    SundayWebry,
+    ComicOgyaaa,
+    ComicEarthstar,
+    Ourfeel,
     Custom(String),
 }
 
 static HOST_TO_WEBSITE: phf::Map<&str, Website> = phf::phf_map! {
     "shonenjumpplus.com" => Website::ShonenJumpPlus,
     "tonarinoyj.jp" => Website::TonarinoYJ,
-    "viewer.heros-web.com" => Website::HerosWeb,
-    "comicbushi-web.com" => Website::ComicBushi,
-    "comicborder.com" => Website::ComicBorder,
+    "pocket.shonenmagazine.com" => Website::MagaPocket,
     "comic-days.com" => Website::ComicDays,
-    "comic-action.com" => Website::ComicAction,
-    "comic-ogyaaa.com" => Website::ComicOgyaaa,
+    "kuragebunch.com" => Website::Kuragebunch,
+    "viewer.heros-web.com" => Website::ComicHeros,
+    "comicborder.com" => Website::ComicBorder,
     "comic-gardo.com" => Website::ComicGardo,
     "comic-zenon.com" => Website::ComicZenon,
-    "feelweb.jp" => Website::Feelweb,
-    "kuragebunch.com" => Website::Kuragebunch,
-    "www.sunday-webry.com" => Website::SundayWebry,
     "magcomi.com" => Website::Magcomi,
+    "comic-action.com" => Website::ComicAction,
+    "comic-trail.com" => Website::ComicTrail,
+    "comic-growl.com" => Website::ComicGrowl,
+    "feelweb.jp" => Website::Feelweb,
+    "www.sunday-webry.com" => Website::SundayWebry,
+    "comic-ogyaaa.com" => Website::ComicOgyaaa,
+    "comic-earthstar.com" => Website::ComicEarthstar,
+    "ourfeel.jp" => Website::Ourfeel,
 };
 
 /// Episode path pattern
@@ -57,18 +65,22 @@ impl ViewerWebsite<Website> for Website {
         match &self {
             Website::ShonenJumpPlus => "shonenjumpplus.com",
             Website::TonarinoYJ => "tonarinoyj.jp",
-            Website::HerosWeb => "viewer.heros-web.com",
-            Website::ComicBushi => "comicbushi-web.com",
-            Website::ComicBorder => "comicborder.com",
+            Website::MagaPocket => "pocket.shonenmagazine.com",
             Website::ComicDays => "comic-days.com",
-            Website::ComicAction => "comic-action.com",
-            Website::ComicOgyaaa => "comic-ogyaaa.com",
+            Website::Kuragebunch => "kuragebunch.com",
+            Website::ComicHeros => "viewer.heros-web.com",
+            Website::ComicBorder => "comicborder.com",
             Website::ComicGardo => "comic-gardo.com",
             Website::ComicZenon => "comic-zenon.com",
-            Website::Feelweb => "feelweb.jp",
-            Website::Kuragebunch => "kuragebunch.com",
-            Website::SundayWebry => "www.sunday-webry.com",
             Website::Magcomi => "magcomi.com",
+            Website::ComicAction => "comic-action.com",
+            Website::ComicTrail => "comic-trail.com",
+            Website::ComicGrowl => "comic-growl.com",
+            Website::Feelweb => "feelweb.jp",
+            Website::SundayWebry => "www.sunday-webry.com",
+            Website::ComicOgyaaa => "comic-ogyaaa.com",
+            Website::ComicEarthstar => "comic-earthstar.com",
+            Website::Ourfeel => "ourfeel.jp",
             Website::Custom(host) => host,
         }
     }
@@ -207,9 +219,11 @@ mod test {
         slice::ParallelSliceMut,
     };
 
+    #[cfg(feature = "pdf")]
+    use crate::io::pdf::PdfWriter;
     use crate::{
         data::{MangaEpisode, MangaPage},
-        io::{pdf::PdfWriter, raw::RawWriter, zip::ZipWriter, EpisodeWriter},
+        io::{raw::RawWriter, zip::ZipWriter, EpisodeWriter},
         progress::ProgressConfig,
         solver::ImageSolver,
         viewer::giga::solver::Solver,
@@ -362,6 +376,7 @@ mod test {
         Ok(())
     }
 
+    #[cfg(feature = "pdf")]
     #[tokio::test]
     async fn test_get_and_solve_and_save_as_pdf() -> Result<()> {
         let episode_id = "9324103625676410700";

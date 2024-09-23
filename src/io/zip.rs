@@ -18,8 +18,9 @@ use super::EpisodeWriter;
 pub struct ZipWriter {
     compression_method: CompressionMethod,
     image_format: image::ImageFormat,
-    num_threads: usize,
+    extension: Option<String>,
     progress: ProgressConfig,
+    num_threads: usize,
     // writer: Arc<Mutex<zip::ZipWriter<std::fs::File>>>,
 }
 
@@ -28,6 +29,7 @@ impl ZipWriter {
         ZipWriter {
             compression_method: CompressionMethod::Zstd,
             image_format: image::ImageFormat::Png,
+            extension: Some("zip".to_string()),
             num_threads: num_cpus::get(),
             progress: ProgressConfig::default(),
         }
@@ -36,21 +38,31 @@ impl ZipWriter {
     pub fn new(
         compression_method: CompressionMethod,
         image_format: image::ImageFormat,
+        extension: Option<String>,
         num_threads: usize,
         progress: ProgressConfig,
     ) -> Self {
         ZipWriter {
             compression_method,
             image_format,
+            extension,
             num_threads,
             progress,
+        }
+    }
+
+    fn extension(&self) -> String {
+        if let Some(e) = &self.extension {
+            e.clone()
+        } else {
+            "zip".to_string()
         }
     }
 }
 
 impl EpisodeWriter for ZipWriter {
     async fn write<P: AsRef<Path>, B: AsRef<[u8]>>(&self, images: Vec<B>, path: P) -> Result<()> {
-        let file = std::fs::File::create(path.as_ref())?;
+        let file = std::fs::File::create(path.as_ref().with_extension(self.extension()))?;
         let zip = Arc::new(Mutex::new(zip::ZipWriter::new(file)));
 
         let image_format = self.image_format;
@@ -88,7 +100,7 @@ impl EpisodeWriter for ZipWriter {
 
     /// Save images as a zip file.
     async fn write_images<P: AsRef<Path>>(&self, images: Vec<DynamicImage>, path: P) -> Result<()> {
-        let file = std::fs::File::create(path.as_ref())?;
+        let file = std::fs::File::create(path.as_ref().with_extension(self.extension()))?;
         let zip = Arc::new(Mutex::new(zip::ZipWriter::new(file)));
         let image_format = self.image_format;
         let compression_method = self.compression_method;

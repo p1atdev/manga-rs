@@ -16,7 +16,7 @@ default = ["giga", "fuz"]
 
 giga = ["rss"]
 fuz = ["prost", "prost-build", "aes", "hex", "cbc", "cipher"]
-
+pdf = ["pdf-writer", "flate2"]
 
 [dependencies]
 anyhow = "1.0.89"
@@ -37,8 +37,8 @@ num_cpus = "1.16.0"
 regex = "1.10.6"
 
 # pdf
-pdf-writer = "0.11.0"
-flate2 = "1.0.33"
+pdf-writer = { version = "0.11.0", optional = true }
+flate2 = { version = "1.0.33", optional = true }
 
 # giga
 rss = { version = "2.0.8", optional = true }

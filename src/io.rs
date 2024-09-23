@@ -3,6 +3,7 @@ use std::{future::Future, path::Path};
 use anyhow::Result;
 use image::DynamicImage;
 
+#[cfg(feature = "pdf")]
 pub mod pdf;
 pub mod raw;
 pub mod zip;
