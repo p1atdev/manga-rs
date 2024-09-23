@@ -1,8 +1,5 @@
-use std::io::{BufWriter, Write};
-
 use anyhow::Result;
 use image::{DynamicImage, ImageBuffer, Rgb};
-use pdf_writer::Finish;
 
 use crate::{solver::ImageSolver, utils::Bytes};
 

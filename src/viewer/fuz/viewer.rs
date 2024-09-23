@@ -239,10 +239,7 @@ mod test {
     use anyhow::bail;
     use futures::StreamExt;
     use indicatif::ParallelProgressIterator;
-    use rayon::{
-        iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator},
-        slice::ParallelSliceMut,
-    };
+    use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
     use crate::{
         data::{MangaEpisode, MangaPage},

@@ -24,6 +24,7 @@ pub struct ZipWriter {
     image_format: image::ImageFormat,
     num_threads: usize,
     progress: ProgressConfig,
+    // writer: Arc<Mutex<zip::ZipWriter<std::fs::File>>>,
 }
 
 impl ZipWriter {

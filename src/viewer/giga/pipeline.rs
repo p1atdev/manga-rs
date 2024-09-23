@@ -1,21 +1,18 @@
 use std::{path::Path, sync::Arc};
 
 use anyhow::{Context, Ok, Result};
-use futures::{stream, StreamExt};
+use futures::{stream, StreamExt, TryStreamExt};
 use image::DynamicImage;
-use indicatif::ParallelProgressIterator;
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
-};
+use rayon::slice::ParallelSliceMut;
 use url::Url;
 
 use crate::{
-    data::{MangaEpisode, MangaPage},
+    data::MangaEpisode,
     io::{pdf::PdfWriter, raw::RawWriter, zip::ZipWriter, EpisodeWriter},
     pipeline::{EpisodePipeline, EpisodePipelineBuilder, SaveFormat, WriterConifg},
     progress::ProgressConfig,
     solver::ImageSolver,
-    utils::{self, Bytes},
+    utils::Bytes,
     viewer::{ViewerClient, ViewerConfigBuilder},
 };
 
@@ -109,91 +106,26 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         self.client.get_episode(episode_id).await
     }
 
-    async fn fetch_images(&self, pages: Vec<Page>) -> Result<Vec<Vec<u8>>> {
-        let pages_len = pages.len();
+    async fn fetch_image(&self, page: &Page) -> Result<Bytes> {
+        let client = self.client.clone();
 
-        let mut pages = self
-            .progress
-            .build_with_message(pages_len, "Fetching images...")?
-            .wrap_stream(futures::stream::iter(pages))
-            .map(|page| {
-                let client = self.client.clone();
+        let url = page.url()?;
+        let res = client.get(url).await?;
+        let bytes = res.bytes().await?;
 
-                tokio::spawn(async move {
-                    let url = page.url()?;
-                    let res = client.get(url).await?;
-                    let bytes = res.bytes().await?;
-
-                    Result::<_>::Ok((bytes, page.index()?))
-                })
-            })
-            .buffer_unordered(self.num_connections)
-            .map(|pair| pair?)
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
-        pages.sort_by_key(|(_, index)| *index);
-        let pages = pages
-            .into_iter()
-            .map(|(bytes, _)| bytes.into())
-            .collect::<Vec<_>>();
-
-        Ok(pages)
+        Ok(bytes.into())
     }
 
-    async fn solve_image_bytes(
-        &self,
-        images: Vec<Bytes>,
-        _pages: Option<Vec<Page>>, // does not use
-    ) -> Result<Vec<Bytes>> {
+    async fn solve_image_bytes(&self, image: Bytes, _page: Option<Page>) -> Result<Bytes> {
         let solver = Arc::new(Solver::new());
-        let mut images = images
-            .par_iter()
-            .progress_with(
-                self.progress
-                    .build_with_message(images.len(), "Solving the image obfuscations...")?,
-            )
-            .enumerate()
-            .map(|(i, bytes)| {
-                let image = solver.solve(bytes)?;
-                Result::<_>::Ok((image, i))
-            })
-            .collect::<Result<Vec<_>>>()?;
-        images.sort_by_key(|(_, index)| *index);
-        let images = images
-            .into_iter()
-            .map(|(bytes, _)| bytes)
-            .collect::<Vec<_>>();
-
-        Ok(images)
+        let image = solver.solve(image)?;
+        Ok(image)
     }
 
-    async fn solve_images(
-        &self,
-        images: Vec<Bytes>,
-        _pages: Option<Vec<Page>>,
-    ) -> Result<Vec<image::DynamicImage>> {
+    async fn solve_image(&self, image: Bytes, _page: Option<Page>) -> Result<DynamicImage> {
         let solver = Arc::new(Solver::new());
-        let mut images = images
-            .par_iter()
-            .progress_with(
-                self.progress
-                    .build_with_message(images.len(), "Solving the image obfuscations...")?,
-            )
-            .enumerate()
-            .map(|(i, bytes)| {
-                let image = solver.solve_from_bytes(bytes)?;
-                Result::<_>::Ok((image, i))
-            })
-            .collect::<Result<Vec<_>>>()?;
-        images.sort_by_key(|(_, index)| *index);
-        let images = images
-            .into_iter()
-            .map(|(image, _)| image)
-            .collect::<Vec<_>>();
-
-        Ok(images)
+        let image = solver.solve_from_bytes(image)?;
+        Ok(image)
     }
 
     async fn write_image_bytes<T: AsRef<Path>>(&self, images: Vec<Bytes>, path: T) -> Result<()> {
@@ -261,8 +193,25 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
     async fn download<T: AsRef<Path>>(&self, url: &Url, path: T) -> Result<()> {
         let episode_id = self.parse_episode_id(url)?;
         let episode = self.fetch_episode(&episode_id).await?;
-        let images = self.fetch_images(episode.pages()).await?;
-        let images = self.solve_images(images, None).await?;
+
+        let pages = episode.pages();
+        let mut images = self
+            .progress
+            .build_with_message(pages.len(), "Downloading...")?
+            .wrap_stream(stream::iter(pages))
+            .enumerate()
+            .map(|(i, page)| async move { Ok((i, self.fetch_image(&page).await?)) })
+            .buffer_unordered(self.num_connections)
+            .map_ok(|(i, image)| async move { Ok((i, self.solve_image(image, None).await?)) })
+            .try_buffer_unordered(self.num_threads)
+            .try_collect::<Vec<_>>()
+            .await?;
+        images.par_sort_by_key(|&(i, _)| i);
+        let images = images
+            .into_iter()
+            .map(|(_, image)| image)
+            .collect::<Vec<_>>();
+
         self.write_images(images, path).await?;
         Ok(())
     }

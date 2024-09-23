@@ -1,6 +1,6 @@
 use std::{future::Future, path::Path};
 
-use anyhow::{bail, Context, Result};
+use anyhow::Result;
 use image::DynamicImage;
 use url::Url;
 
@@ -8,7 +8,6 @@ use crate::{
     data::{MangaEpisode, MangaPage},
     progress::ProgressConfig,
     utils::Bytes,
-    viewer::{fuz, giga, ViewerType, ViewerWebsite},
 };
 
 /// How to save the manga
@@ -45,7 +44,7 @@ impl WriterConifg {
     }
 }
 
-/// Piepline for downloading manga
+/// Pipeline configuration trait
 pub trait EpisodePipelineBuilder<W, A: MangaPage, B: MangaEpisode<A>, P: EpisodePipeline<A, B>>:
     Default
 {
@@ -56,29 +55,41 @@ pub trait EpisodePipelineBuilder<W, A: MangaPage, B: MangaEpisode<A>, P: Episode
     fn num_connections(self, num_connections: usize) -> Self;
 }
 
+/// Pipeline to download manga
 pub trait EpisodePipeline<P: MangaPage, E: MangaEpisode<P>> {
     fn parse_episode_id(&self, url: &Url) -> Result<String>;
+
+    /// Fetch the Episode
     fn fetch_episode(&self, episode_id: &str) -> impl Future<Output = Result<E>> + Send;
-    fn fetch_images(&self, pages: Vec<P>) -> impl Future<Output = Result<Vec<Bytes>>> + Send;
+
+    /// Fetch an image
+    fn fetch_image(&self, page: &P) -> impl Future<Output = Result<Bytes>> + Send;
+
+    /// Solve the obfuscation
     fn solve_image_bytes(
         &self,
-        images: Vec<Bytes>,
-        pages: Option<Vec<P>>,
-    ) -> impl Future<Output = Result<Vec<Bytes>>> + Send;
-    fn solve_images(
+        image: Bytes,
+        page: Option<P>,
+    ) -> impl Future<Output = Result<Bytes>> + Send;
+
+    /// Solve the obfuscation and return the image
+    fn solve_image(
         &self,
-        images: Vec<Bytes>,
-        pages: Option<Vec<P>>,
-    ) -> impl Future<Output = Result<Vec<DynamicImage>>> + Send;
+        image: Bytes,
+        page: Option<P>,
+    ) -> impl Future<Output = Result<DynamicImage>> + Send;
+
     fn write_image_bytes<T: AsRef<Path>>(
         &self,
         images: Vec<Bytes>,
         path: T,
     ) -> impl Future<Output = Result<()>>;
+
     fn write_images<T: AsRef<Path>>(
         &self,
         images: Vec<DynamicImage>,
         path: T,
     ) -> impl Future<Output = Result<()>>;
+
     fn download<T: AsRef<Path>>(&self, url: &Url, path: T) -> impl Future<Output = Result<()>>;
 }
