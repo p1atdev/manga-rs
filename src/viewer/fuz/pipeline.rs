@@ -248,9 +248,12 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         let episode_id = self.parse_episode_id(url)?;
         let episode = self.fetch_episode(&episode_id).await?;
 
-        let mut path = dir
-            .as_ref()
-            .join(episode.title().context("Episode title not found")?);
+        let mut path = dir.as_ref().join(
+            episode
+                .title()
+                .context("Episode title not found")?
+                .replace(".", "_"),
+        );
         match self.writer_config.save_format() {
             SaveFormat::Raw => {} // Do nothing
             SaveFormat::Zip { .. } => {
