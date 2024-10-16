@@ -321,13 +321,13 @@ mod test {
 
         println!("Saving {} pages", images.len());
 
-        tokio::fs::create_dir_all("playground/output/fuz_solve").await?;
+        tokio::fs::create_dir_all("tests/output/fuz_solve").await?;
         progress
             .build(images.len())?
             .wrap_stream(futures::stream::iter(images))
             .map(|(image, index)| {
                 tokio::spawn(async move {
-                    tokio::fs::write(format!("playground/output/fuz_solve/{}.jpg", index), image)
+                    tokio::fs::write(format!("tests/output/fuz_solve/{}.jpg", index), image)
                         .await
                         .unwrap();
                 })

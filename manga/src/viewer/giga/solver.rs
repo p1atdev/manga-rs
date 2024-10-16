@@ -117,10 +117,10 @@ mod test {
     #[test]
     fn test_solve_sample_image() -> Result<()> {
         let solver = Solver::new();
-        let img = image::ImageReader::open("./playground/assets/giga-original.jpg")?.decode()?;
+        let img = image::ImageReader::open("./tests/assets/giga-original.jpg")?.decode()?;
 
         let solved = solver.solve_image(img)?;
-        solved.save("./playground/output/giga-solved.jpg")?;
+        solved.save("./tests/output/giga-solved.jpg")?;
 
         Ok(())
     }

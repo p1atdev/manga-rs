@@ -311,10 +311,10 @@ mod test {
 
         println!("Saving {} pages", images.len());
 
-        tokio::fs::create_dir_all("playground/output/giga_solve_raw").await?;
+        tokio::fs::create_dir_all("tests/output/giga_solve_raw").await?;
         let writer = RawWriter::default();
         writer
-            .write_images(images, "playground/output/giga_solve_raw")
+            .write_images(images, "tests/output/giga_solve_raw")
             .await?;
 
         Ok(())
@@ -370,7 +370,7 @@ mod test {
 
         let writer = ZipWriter::default();
         writer
-            .write_images(images, "playground/output/giga_solve_2.zip")
+            .write_images(images, "tests/output/giga_solve_2.zip")
             .await?;
 
         Ok(())
@@ -427,7 +427,7 @@ mod test {
 
         let writer = PdfWriter::default();
         writer
-            .write_images(images, "playground/output/giga_solve_3.pdf")
+            .write_images(images, "tests/output/giga_solve_3.pdf")
             .await?;
 
         Ok(())

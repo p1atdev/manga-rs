@@ -302,7 +302,7 @@ mod test {
     #[tokio::test]
     async fn test_pipeline_download_raw() -> Result<()> {
         let url = Url::parse("https://comic-fuz.com/manga/viewer/44994")?;
-        let path = "playground/output/fuz_pipe_raw";
+        let path = "tests/output/fuz_pipe_raw";
 
         let pipe = Pipeline::default();
 
@@ -313,7 +313,7 @@ mod test {
     #[tokio::test]
     async fn test_pipeline_download_zip() -> Result<()> {
         let url = Url::parse("https://comic-fuz.com/manga/viewer/44994")?;
-        let path = "playground/output/fuz_pipe_zip.zip";
+        let path = "tests/output/fuz_pipe_zip.zip";
 
         let pipe = Pipeline::default().set_writer_config(WriterConifg::new(
             SaveFormat::Zip {
@@ -331,7 +331,7 @@ mod test {
     #[tokio::test]
     async fn test_pipeline_download_pdf() -> Result<()> {
         let url = Url::parse("https://comic-fuz.com/manga/viewer/44994")?;
-        let path = "playground/output/fuz_pipe_pdf.pdf";
+        let path = "tests/output/fuz_pipe_pdf.pdf";
 
         let pipe = Pipeline::default()
             .set_writer_config(WriterConifg::new(SaveFormat::Pdf, image::ImageFormat::Jpeg));

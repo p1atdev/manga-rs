@@ -279,7 +279,7 @@ mod test {
     #[tokio::test]
     async fn test_pipeline_download_raw() -> Result<()> {
         let url = Url::parse("https://shonenjumpplus.com/episode/16457717013869519536")?;
-        let path = "playground/output/giga_pipe_raw";
+        let path = "tests/output/giga_pipe_raw";
 
         let pipe = Pipeline::default();
 
@@ -290,7 +290,7 @@ mod test {
     #[tokio::test]
     async fn test_pipeline_download_zip() -> Result<()> {
         let url = Url::parse("https://shonenjumpplus.com/episode/16457717013869519536")?;
-        let path = "playground/output/giga_pipe_zip.zip";
+        let path = "tests/output/giga_pipe_zip.zip";
 
         let pipe = Pipeline::default().set_writer_config(WriterConifg::new(
             SaveFormat::Zip {
@@ -308,7 +308,7 @@ mod test {
     #[tokio::test]
     async fn test_pipeline_download_pdf() -> Result<()> {
         let url = Url::parse("https://shonenjumpplus.com/episode/16457717013869519536")?;
-        let path = "playground/output/giga_pipe_pdf.pdf";
+        let path = "tests/output/giga_pipe_pdf.pdf";
 
         let pipe = Pipeline::default()
             .set_writer_config(WriterConifg::new(SaveFormat::Pdf, image::ImageFormat::Jpeg));
@@ -415,7 +415,11 @@ mod test {
                         .set_website(website)
                         .set_writer_config(writer_config.as_ref().clone());
 
-                    pipe.download(&url, path).await?;
+                    assert!(
+                        pipe.download(&url, path).await.is_ok(),
+                        "failed to download: {}",
+                        name
+                    );
 
                     Ok(())
                 })

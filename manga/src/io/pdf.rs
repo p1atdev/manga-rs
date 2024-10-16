@@ -284,7 +284,7 @@ mod test {
         // .kids(page_ids);
 
         // save
-        tokio::fs::write("playground/output/blank.pdf", pdf.finish()).await?;
+        tokio::fs::write("tests/output/blank.pdf", pdf.finish()).await?;
 
         Ok(())
     }
@@ -305,7 +305,7 @@ mod test {
 
         // load the image
         let image_id = ref_id.bump().clone();
-        let data = std::fs::read("playground/assets/giga-original.jpg")?;
+        let data = std::fs::read("tests/assets/giga-original.jpg")?;
         let dynamic = image::load_from_memory(&data)?;
 
         // Write the stream for the image we want to embed.
@@ -345,7 +345,7 @@ mod test {
             .kids(page_ids);
 
         // save
-        tokio::fs::write("playground/output/image.pdf", pdf.finish()).await?;
+        tokio::fs::write("tests/output/image.pdf", pdf.finish()).await?;
 
         Ok(())
     }
