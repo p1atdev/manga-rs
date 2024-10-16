@@ -2,6 +2,7 @@
 pub mod fuz;
 
 pub mod giga;
+pub mod kadocomi;
 
 use std::future::Future;
 
