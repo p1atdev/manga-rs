@@ -1,0 +1,9 @@
+[package]
+name = "html"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.93"
+scraper = "0.21.0"
+tokio = "1.41.1"

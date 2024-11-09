@@ -7,9 +7,6 @@ edition = "2021"
 name = "manga"
 path = "src/lib.rs"
 
-[[bin]]
-name = "manga"
-path = "src/main.rs"
 
 [features]
 default = ["giga", "fuz"]

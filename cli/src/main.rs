@@ -1,6 +1,5 @@
 use anyhow::{bail, Context, Result};
 use manga::pipeline::{EpisodePipeline, EpisodePipelineBuilder, WriterConifg};
-#[cfg(feature = "fuz")]
 use manga::viewer::fuz::{self, pipeline::Pipeline as FuzPipeline};
 use manga::viewer::giga::{self, pipeline::Pipeline as GigaPipeline};
 use manga::{progress::ProgressConfig, viewer::ViewerWebsite};
@@ -48,7 +47,6 @@ enum SaveFormat {
     Raw,
     Zip,
     Cbz,
-    #[cfg(feature = "pdf")]
     Pdf,
 }
 
@@ -56,14 +54,13 @@ fn get_save_format(save: SaveFormat) -> manga::pipeline::SaveFormat {
     match save {
         SaveFormat::Raw => manga::pipeline::SaveFormat::Raw,
         SaveFormat::Zip => manga::pipeline::SaveFormat::Zip {
-            compression_method: zip::CompressionMethod::Zstd,
+            compression_method: zip::CompressionMethod::Deflated,
             extension: None,
         },
         SaveFormat::Cbz => manga::pipeline::SaveFormat::Zip {
-            compression_method: zip::CompressionMethod::Zstd,
+            compression_method: zip::CompressionMethod::Deflated,
             extension: Some("cbz".to_string()),
         },
-        #[cfg(feature = "pdf")]
         SaveFormat::Pdf => manga::pipeline::SaveFormat::Pdf,
     }
 }
@@ -107,7 +104,6 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
 
-            #[cfg(feature = "fuz")]
             if let Some(website) = fuz::viewer::Website::lookup(host) {
                 let pipe = FuzPipeline::default()
                     .set_website(website)
