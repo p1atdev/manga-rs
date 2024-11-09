@@ -1,9 +1,10 @@
 use std::sync::LazyLock;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use regex::Regex;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::Response;
+use scraper::{Html, Selector};
 use url::Url;
 
 use crate::auth::EmptyAuth;
@@ -195,15 +196,33 @@ impl Client {
     fn compose_episode_url(&self, episode_id: &str) -> Url {
         self.config
             .base_url
-            .join(&format!("/episode/{}.json", episode_id))
+            .join(&format!("/episode/{}", episode_id))
             .unwrap()
     }
 
     /// Get episode
     pub async fn get_episode(&self, episode_id: &str) -> Result<Episode> {
+        self.get_episode_from_html(episode_id).await
+    }
+
+    fn extract_data_from_html(&self, html: &str) -> Result<String> {
+        let document = Html::parse_document(html);
+        let selector = Selector::parse("script#episode-json").unwrap();
+        let json = document
+            .select(&selector)
+            .next()
+            .unwrap()
+            .attr("data-value")
+            .ok_or(anyhow!("Failed to extract data-value"))?;
+        return Ok(json.to_string());
+    }
+
+    async fn get_episode_from_html(&self, episode_id: &str) -> Result<Episode> {
         let url = self.compose_episode_url(episode_id);
         let res = self.get(url).await?;
-        let episode: Episode = serde_json::from_slice(&res.bytes().await?)?;
+        let html = res.text().await?;
+        let json = self.extract_data_from_html(&html)?;
+        let episode: Episode = serde_json::from_str(&json)?;
         Ok(episode)
     }
 }
