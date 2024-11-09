@@ -32,6 +32,8 @@ indicatif = { version = "0.17.8", features = ["futures", "rayon", "tokio"] }
 zip = "2.2.0"
 num_cpus = "1.16.0"
 regex = "1.11.0"
+phf = { version = "0.11.2", features = ["macros"] }
+scraper = "0.21.0"
 
 # pdf
 pdf-writer = { version = "0.12.0", optional = true }
@@ -46,8 +48,6 @@ aes = { version = "0.8.4", optional = true }
 hex = { version = "0.4.3", optional = true }
 cbc = { version = "0.1.2", optional = true }
 cipher = { version = "0.4.4", features = ["block-padding"], optional = true }
-phf = { version = "0.11.2", features = ["macros"] }
-scraper = "0.21.0"
 
 [build-dependencies]
 prost-build = { version = "0.13.3", optional = true }
