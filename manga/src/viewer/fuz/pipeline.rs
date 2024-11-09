@@ -223,7 +223,13 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
 
         let mut images = self
             .progress
-            .build_with_message(pages.len(), "Downloading...")?
+            .build_with_message(
+                pages.len(),
+                format!(
+                    "Downloading {}...",
+                    episode.title().unwrap_or("Unknown episode".to_string())
+                ),
+            )?
             .wrap_stream(stream::iter(pages))
             .enumerate()
             .map(|(i, page)| async move { Ok((i, page.clone(), self.fetch_image(&page).await?)) })
@@ -273,7 +279,13 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
 
         let mut images = self
             .progress
-            .build_with_message(pages.len(), "Downloading...")?
+            .build_with_message(
+                pages.len(),
+                format!(
+                    "Downloading {}...",
+                    episode.title().unwrap_or("Unknown episode".to_string())
+                ),
+            )?
             .wrap_stream(stream::iter(pages))
             .enumerate()
             .map(|(i, page)| async move { Ok((i, page.clone(), self.fetch_image(&page).await?)) })
