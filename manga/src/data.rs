@@ -1,5 +1,14 @@
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use url::Url;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum IndexNumber {
+    Int(usize),
+    Float(f64),
+    String(String),
+}
 
 /// A manga is a collection of series
 pub trait MangaPage {
@@ -16,7 +25,7 @@ pub trait MangaEpisode<P: MangaPage> {
     fn id(&self) -> String;
 
     /// Get the index of the episode
-    fn index(&self) -> usize;
+    fn index(&self) -> IndexNumber;
 
     /// Get the title of the episode
     fn title(&self) -> Option<String>;

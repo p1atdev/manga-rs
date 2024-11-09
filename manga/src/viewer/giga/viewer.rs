@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use regex::Regex;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::Response;
@@ -207,13 +207,16 @@ impl Client {
 
     fn extract_data_from_html(&self, html: &str) -> Result<String> {
         let document = Html::parse_document(html);
-        let selector = Selector::parse("script#episode-json").unwrap();
-        let json = document
-            .select(&selector)
-            .next()
-            .unwrap()
-            .attr("data-value")
-            .ok_or(anyhow!("Failed to extract data-value"))?;
+        let selector = match Selector::parse("script#episode-json") {
+            Ok(selector) => selector,
+            Err(_) => bail!("Failed to parse selector"),
+        };
+        let json = match document.select(&selector).next() {
+            Some(element) => Ok(element
+                .attr("data-value")
+                .ok_or(anyhow!("Failed to extract data-value"))?),
+            None => Err(anyhow!("Failed to find script#episode-json")),
+        }?;
         return Ok(json.to_string());
     }
 

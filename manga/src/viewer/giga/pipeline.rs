@@ -209,7 +209,13 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         let pages = episode.pages();
         let mut images = self
             .progress
-            .build_with_message(pages.len(), "Downloading...")?
+            .build_with_message(
+                pages.len(),
+                format!(
+                    "Downloading {}...",
+                    episode.title().unwrap_or("Unknown episode".to_string())
+                ),
+            )?
             .wrap_stream(stream::iter(pages))
             .enumerate()
             .map(|(i, page)| async move { Ok((i, self.fetch_image(&page).await?)) })
@@ -249,7 +255,13 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         let pages = episode.pages();
         let mut images = self
             .progress
-            .build_with_message(pages.len(), "Downloading...")?
+            .build_with_message(
+                pages.len(),
+                format!(
+                    "Downloading {}...",
+                    episode.title().unwrap_or("Unknown episode".to_string())
+                ),
+            )?
             .wrap_stream(stream::iter(pages))
             .enumerate()
             .map(|(i, page)| async move { Ok((i, self.fetch_image(&page).await?)) })
@@ -317,9 +329,29 @@ mod test {
         Ok(())
     }
 
+    #[cfg(feature = "pdf")]
+    #[tokio::test]
+    async fn test_pipeline_download_magcomi() -> Result<()> {
+        let url = Url::parse("https://magcomi.com/episode/2550912964518979926")?;
+        let path = "tests/output/magcomi.cbz";
+
+        let pipe = Pipeline::default()
+            .set_website(Website::Magcomi)
+            .set_writer_config(WriterConifg::new(
+                SaveFormat::Zip {
+                    compression_method: zip::CompressionMethod::Deflated,
+                    extension: Some("cbz".to_string()),
+                },
+                image::ImageFormat::Jpeg,
+            ));
+
+        pipe.download(&url, path).await?;
+        Ok(())
+    }
+
     #[tokio::test]
     async fn test_pipeline_all_websites_zip() -> Result<()> {
-        let dir = Path::new("output/giga_pipe_websites");
+        let dir = Path::new("tests/output/giga_pipe_websites");
 
         tokio::fs::create_dir_all(dir).await?;
 
@@ -397,7 +429,9 @@ mod test {
             image::ImageFormat::WebP,
         ));
 
-        stream::iter(urls)
+        println!("Downloading from {} urls...\n", urls.len());
+
+        let tasks = stream::iter(urls.clone())
             .map(|[url, name]| {
                 let writer_config = writer_config.clone();
 
@@ -415,18 +449,30 @@ mod test {
                         .set_website(website)
                         .set_writer_config(writer_config.as_ref().clone());
 
-                    assert!(
-                        pipe.download(&url, path).await.is_ok(),
-                        "failed to download: {}",
-                        name
-                    );
+                    let res = pipe.download(&url, path).await;
+                    if let Err(e) = res {
+                        anyhow::bail!("Failed to download from {}: {:?}", name, e)
+                    }
 
                     Ok(())
                 })
             })
             .buffer_unordered(num_cpus::get())
             .try_collect::<Vec<_>>()
-            .await?;
+            .await;
+
+        if let Err(e) = tasks {
+            anyhow::bail!("Failed to download: {:?}", e);
+        }
+
+        // check donwloaded files to exist
+        for [_, name] in urls {
+            let path = dir.join(name).with_extension("cbz");
+            if !path.exists() {
+                anyhow::bail!("File not found: {:?}", path);
+            }
+        }
+
         Ok(())
     }
 }
