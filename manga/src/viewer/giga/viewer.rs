@@ -217,7 +217,7 @@ impl Client {
                 .ok_or(anyhow!("Failed to extract data-value"))?),
             None => Err(anyhow!("Failed to find script#episode-json")),
         }?;
-        return Ok(json.to_string());
+        Ok(json.to_string())
     }
 
     async fn get_episode_from_html(&self, episode_id: &str) -> Result<Episode> {
