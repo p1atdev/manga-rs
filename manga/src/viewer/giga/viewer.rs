@@ -234,7 +234,7 @@ impl Client {
 mod test {
     use std::sync::Arc;
 
-    use futures::StreamExt as _;
+    use futures::{StreamExt as _, TryStreamExt};
     use indicatif::ParallelProgressIterator;
     use rayon::{
         iter::{IntoParallelRefIterator, ParallelIterator},
@@ -298,20 +298,17 @@ mod test {
             .map(|page| {
                 let client = client.clone();
 
-                tokio::spawn(async move {
+                async move {
                     let url = page.url()?;
                     let res = client.get(url).await?;
                     let bytes = res.bytes().await?;
 
                     Result::<_>::Ok((bytes, page))
-                })
+                }
             })
             .buffer_unordered(4)
-            .map(|pair| pair?)
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
+            .try_collect::<Vec<_>>()
+            .await?;
 
         println!("Solving {} pages", pages.len());
 
@@ -361,20 +358,17 @@ mod test {
             .map(|page| {
                 let client = client.clone();
 
-                tokio::spawn(async move {
+                async move {
                     let url = page.url()?;
                     let res = client.get(url).await?;
                     let bytes = res.bytes().await?;
 
                     Result::<_>::Ok(bytes)
-                })
+                }
             })
             .buffer_unordered(4)
-            .map(|bytes| bytes?)
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
+            .try_collect::<Vec<_>>()
+            .await?;
 
         println!("Solving {} pages", pages.len());
 
@@ -418,20 +412,17 @@ mod test {
             .map(|page| {
                 let client = client.clone();
 
-                tokio::spawn(async move {
+                async move {
                     let url = page.url()?;
                     let res = client.get(url).await?;
                     let bytes = res.bytes().await?;
 
                     Result::<_>::Ok(bytes)
-                })
+                }
             })
             .buffer_unordered(4)
-            .map(|bytes| bytes?)
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
+            .try_collect::<Vec<_>>()
+            .await?;
 
         println!("Solving {} pages", pages.len());
 

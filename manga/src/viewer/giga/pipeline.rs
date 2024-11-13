@@ -435,7 +435,7 @@ mod test {
             .map(|[url, name]| {
                 let writer_config = writer_config.clone();
 
-                tokio::spawn(async move {
+                async move {
                     let path = dir.join(name);
                     let url = Url::parse(url)?;
                     let host = url.host_str().context("Host not found")?;
@@ -455,7 +455,7 @@ mod test {
                     }
 
                     Ok(())
-                })
+                }
             })
             .buffer_unordered(num_cpus::get())
             .try_collect::<Vec<_>>()

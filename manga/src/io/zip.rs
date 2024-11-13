@@ -80,7 +80,7 @@ impl EpisodeWriter for ZipWriter {
                 let zip = zip.clone();
                 let options = FileOptions::<ExtendedFileOptions>::default()
                     .compression_method(compression_method);
-                tokio::spawn(async move {
+                async move {
                     let (i, bytes) = pair;
                     let mut zip = zip.lock().await;
                     zip.start_file(
@@ -89,7 +89,7 @@ impl EpisodeWriter for ZipWriter {
                     )?;
                     zip.write_all(&bytes)?;
                     Result::<_>::Ok(())
-                })
+                }
             })
             .buffer_unordered(self.num_threads)
             .collect::<Vec<_>>()
@@ -121,7 +121,7 @@ impl EpisodeWriter for ZipWriter {
                 let zip = zip.clone();
                 let options = FileOptions::<ExtendedFileOptions>::default()
                     .compression_method(compression_method);
-                tokio::spawn(async move {
+                async move {
                     let (i, bytes) = pair?;
                     let mut zip = zip.lock().await;
                     zip.start_file(
@@ -130,7 +130,7 @@ impl EpisodeWriter for ZipWriter {
                     )?;
                     zip.write_all(&bytes)?;
                     Result::<_>::Ok(())
-                })
+                }
             })
             .buffer_unordered(self.num_threads)
             .collect::<Vec<_>>()

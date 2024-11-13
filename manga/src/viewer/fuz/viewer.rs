@@ -237,7 +237,7 @@ mod test {
     use std::sync::Arc;
 
     use anyhow::bail;
-    use futures::StreamExt;
+    use futures::{StreamExt, TryStreamExt};
     use indicatif::ParallelProgressIterator;
     use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
@@ -287,19 +287,16 @@ mod test {
             .wrap_stream(futures::stream::iter(pages))
             .map(|page| {
                 let client = client.clone();
-                tokio::spawn(async move {
+                async move {
                     let url = client.image_url(page.image_path()?)?;
                     let res = client.get(url).await?;
                     let bytes = res.bytes().await?;
                     Result::<_>::Ok((bytes, page))
-                })
+                }
             })
             .buffer_unordered(4)
-            .map(|pair| pair?)
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
+            .try_collect::<Vec<_>>()
+            .await?;
 
         println!("Solving {} pages", pages.len());
 
@@ -325,12 +322,10 @@ mod test {
         progress
             .build(images.len())?
             .wrap_stream(futures::stream::iter(images))
-            .map(|(image, index)| {
-                tokio::spawn(async move {
-                    tokio::fs::write(format!("tests/output/fuz_solve/{}.jpg", index), image)
-                        .await
-                        .unwrap();
-                })
+            .map(|(image, index)| async move {
+                tokio::fs::write(format!("tests/output/fuz_solve/{}.jpg", index), image)
+                    .await
+                    .unwrap();
             })
             .buffer_unordered(16)
             .collect::<Vec<_>>()

@@ -58,7 +58,7 @@ impl EpisodeWriter for RawWriter {
             .enumerate()
             .map(|pair| {
                 let path = path.clone();
-                tokio::spawn(async move {
+                async move {
                     let (i, bytes) = pair;
                     let image_name = format!("{}.{}", i, image_format.extensions_str()[0]);
 
@@ -73,7 +73,7 @@ impl EpisodeWriter for RawWriter {
                     file.write_all(&bytes.as_ref()).await?;
 
                     Result::<_>::Ok(())
-                })
+                }
             })
             .buffer_unordered(self.num_threads)
             .collect::<Vec<_>>()
@@ -106,7 +106,7 @@ impl EpisodeWriter for RawWriter {
             .map(|pair| pair?)
             .map(|pair| {
                 let path = path.clone();
-                tokio::spawn(async move {
+                async move {
                     let (i, bytes) = pair?;
                     let image_name = format!("{}.{}", i, image_format.extensions_str()[0]);
 
@@ -121,7 +121,7 @@ impl EpisodeWriter for RawWriter {
                     file.write_all(&bytes).await?;
 
                     Result::<_>::Ok(())
-                })
+                }
             })
             .buffer_unordered(self.num_threads)
             .collect::<Vec<_>>()

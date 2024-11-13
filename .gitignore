@@ -28,9 +28,9 @@ Cargo.lock
 
 output
 
-
 # Added by cargo
 #
 # already existing elements were commented out
 
 #/target
+.rustc_info.json
