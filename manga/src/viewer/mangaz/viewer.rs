@@ -236,6 +236,7 @@ mod test {
                 let index = p.index().unwrap();
                 let url = p.image_url(&base_url, &verkey).unwrap();
                 println!("{}: {}", index, url);
+                // println!("{:?}", p.scramble);
             }
         }
     }

@@ -81,28 +81,36 @@ pub struct Location {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Page {
-    no: i64,
-    name: String,
-    side: Side,
-    pair_no: Option<i64>,
-    scramble: Scramble,
+    pub no: i64,
+    pub name: String,
+    pub side: Side,
+    pub pair_no: Option<i64>,
+    pub scramble: Scramble,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scramble {
-    w: i64,
-    h: i64,
-    crops: Vec<Crop>,
+    #[serde(rename = "w")]
+    pub width: u32,
+    #[serde(rename = "h")]
+    pub height: u32,
+    pub crops: Vec<Crop>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Crop {
-    x: i64,
-    y: i64,
-    x2: i64,
-    y2: i64,
-    w: i64,
-    h: i64,
+    #[serde(rename = "x")]
+    pub original_x: u32,
+    #[serde(rename = "y")]
+    pub original_y: u32,
+    #[serde(rename = "x2")]
+    pub scrambled_x: u32,
+    #[serde(rename = "y2")]
+    pub scrambled_y: u32,
+    #[serde(rename = "w")]
+    pub width: u32,
+    #[serde(rename = "h")]
+    pub height: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
