@@ -3,6 +3,7 @@ pub mod fuz;
 
 pub mod giga;
 pub mod kadocomi;
+#[deprecated]
 pub mod mangaz;
 
 use std::future::Future;
