@@ -1,8 +1,7 @@
-use std::{path::Path, sync::Arc};
-
 use anyhow::{Context, Ok, Result};
 use futures::{stream, StreamExt, TryStreamExt};
 use image::DynamicImage;
+use std::{path::Path, sync::Arc, usize};
 use url::Url;
 
 #[cfg(feature = "pdf")]
@@ -31,7 +30,6 @@ pub struct Pipeline {
     writer_config: WriterConifg,
     num_threads: usize,
     num_connections: usize,
-    // file_writer: Arc<FileWriter>,
 }
 
 impl Default for Pipeline {
@@ -42,7 +40,6 @@ impl Default for Pipeline {
             progress: ProgressConfig::default(),
             num_threads: num_cpus::get(),
             num_connections: 8,
-            // file_writer: Arc::new(FileWriter::new(&writer_config, &"./").unwrap()),
             writer_config, // must be after file_writer
         }
     }
@@ -146,29 +143,34 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
     async fn download<P: AsRef<Path>>(&self, url: &Url, path: &P) -> Result<()> {
         let episode_id = self.parse_episode_id(url)?;
         let episode = self.fetch_episode(&episode_id).await?;
-        let writer = self.file_writer(&path)?;
+        let writer = Arc::new(self.file_writer(&path)?);
         writer.prepare().await?;
 
         let pages = episode.pages();
-        self.progress
-            .build_with_message(
-                pages.len(),
-                format!(
-                    "Downloading {}...",
-                    episode.title().unwrap_or("Unknown episode".to_string())
-                ),
-            )?
-            .wrap_stream(stream::iter(pages))
+        let progress = self.progress.build_with_message(
+            pages.len(),
+            format!(
+                "Downloading {}...",
+                episode.title().unwrap_or("Unknown episode".to_string())
+            ),
+        )?;
+
+        stream::iter(pages)
             .enumerate()
             .map(|(i, page)| async move { Ok((i, self.fetch_image(&page).await?)) })
             .buffer_unordered(self.num_connections)
             .map_ok(|(i, image)| async move { Ok((i, self.solve_image(image, None).await?)) })
             .try_buffer_unordered(self.num_threads)
-            // .map_ok(|(i, image)| {
-            //     let writer = writer.clone();
-            //     async move { Ok((i, self.write(&writer, i, image).await?)) }
-            // })
-            // .try_buffer_unordered(self.num_threads)
+            .map_ok(|(i, image)| {
+                let writer = writer.clone();
+                async move { Ok((i, self.write(&writer, i, image).await?)) }
+            })
+            .try_buffer_unordered(self.num_threads)
+            .map_ok(|_| {
+                progress.inc(1);
+                async move { Ok(()) }
+            })
+            .try_buffered(self.num_threads)
             .try_collect::<Vec<_>>()
             .await?;
 
@@ -197,15 +199,15 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         writer.prepare().await?;
 
         let pages = episode.pages();
-        self.progress
-            .build_with_message(
-                pages.len(),
-                format!(
-                    "Downloading {}...",
-                    episode.title().unwrap_or("Unknown episode".to_string())
-                ),
-            )?
-            .wrap_stream(stream::iter(pages))
+        let progress = self.progress.build_with_message(
+            pages.len(),
+            format!(
+                "Downloading {}...",
+                episode.title().unwrap_or("Unknown episode".to_string())
+            ),
+        )?;
+
+        stream::iter(pages)
             .enumerate()
             .map(|(i, page)| async move { Ok((i, self.fetch_image(&page).await?)) })
             .buffer_unordered(self.num_connections)
@@ -216,6 +218,11 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
                 async move { Ok((i, self.write(&writer, i, image).await?)) }
             })
             .try_buffer_unordered(self.num_threads)
+            .map_ok(|_| {
+                progress.inc(1);
+                async move { Ok(()) }
+            })
+            .try_buffered(self.num_threads)
             .try_collect::<Vec<_>>()
             .await?;
         Ok(())
@@ -224,17 +231,15 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
 
 #[cfg(test)]
 mod test {
-
-    use crate::viewer::ViewerWebsite;
-
     use super::*;
+    use crate::viewer::ViewerWebsite;
 
     #[tokio::test]
     async fn test_pipeline_download_raw() -> Result<()> {
         let url = Url::parse("https://shonenjumpplus.com/episode/16457717013869519536")?;
         let path = "tests/output/giga_pipe_raw";
 
-        let pipe = Pipeline::default().set_num_threads(16);
+        let pipe = Pipeline::default();
 
         pipe.download(&url, &path).await?;
         Ok(())
@@ -245,15 +250,13 @@ mod test {
         let url = Url::parse("https://shonenjumpplus.com/episode/16457717013869519536")?;
         let path = "tests/output/giga_pipe_zip.zip";
 
-        let pipe = Pipeline::default()
-            .set_num_threads(16)
-            .set_writer_config(WriterConifg::new(
-                SaveFormat::Zip {
-                    compression_method: zip::CompressionMethod::Deflated,
-                    extension: None,
-                },
-                image::ImageFormat::WebP,
-            ));
+        let pipe = Pipeline::default().set_writer_config(WriterConifg::new(
+            SaveFormat::Zip {
+                compression_method: zip::CompressionMethod::Deflated,
+                extension: None,
+            },
+            image::ImageFormat::WebP,
+        ));
 
         pipe.download(&url, &path).await?;
         Ok(())

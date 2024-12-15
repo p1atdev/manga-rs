@@ -70,8 +70,7 @@ impl Solver {
         let mut img = buffer.clone();
 
         let indices = (0..self.num_cells)
-            .flat_map(|i| (0..self.num_cells).map(move |j| (i, j)))
-            .filter(|&(i, j)| j > i)
+            .flat_map(move |i| (i..self.num_cells).map(move |j| (i, j)))
             .collect::<Vec<_>>();
 
         indices.iter().for_each(|&(i, j)| {

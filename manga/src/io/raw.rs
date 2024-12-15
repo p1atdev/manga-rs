@@ -1,6 +1,5 @@
-use std::path::{Path, PathBuf};
-
 use anyhow::{Ok, Result};
+use std::path::{Path, PathBuf};
 
 use super::EpisodeWriter;
 
@@ -43,13 +42,8 @@ impl EpisodeWriter for RawWriter {
         let image_format = self.image_format;
 
         tokio::task::spawn_blocking(move || {
-            let mut file = std::fs::File::options()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(save_path)?;
+            let mut file = std::fs::File::create(save_path)?;
             image.write_to(&mut file, image_format)?;
-            // image.save(save_path)?;
             Ok(())
         })
         .await?

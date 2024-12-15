@@ -161,15 +161,15 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         let writer = self.file_writer(path)?;
         writer.prepare().await?;
 
-        self.progress
-            .build_with_message(
-                pages.len(),
-                format!(
-                    "Downloading {}...",
-                    episode.title().unwrap_or("Unknown episode".to_string())
-                ),
-            )?
-            .wrap_stream(stream::iter(pages))
+        let progress = self.progress.build_with_message(
+            pages.len(),
+            format!(
+                "Downloading {}...",
+                episode.title().unwrap_or("Unknown episode".to_string())
+            ),
+        )?;
+
+        stream::iter(pages)
             .enumerate()
             .map(|(i, page)| async move { Ok((i, page.clone(), self.fetch_image(&page).await?)) })
             .buffer_unordered(self.num_connections)
@@ -182,6 +182,11 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
                 async move { Ok((i, self.write(&writer, i, image).await?)) }
             })
             .try_buffer_unordered(self.num_threads)
+            .map_ok(|_| {
+                progress.inc(1);
+                async move { Ok(()) }
+            })
+            .try_buffered(self.num_threads)
             .try_collect::<Vec<_>>()
             .await?;
 
@@ -217,15 +222,15 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
             .filter(|page| page.is_image())
             .collect::<Vec<_>>();
 
-        self.progress
-            .build_with_message(
-                pages.len(),
-                format!(
-                    "Downloading {}...",
-                    episode.title().unwrap_or("Unknown episode".to_string())
-                ),
-            )?
-            .wrap_stream(stream::iter(pages))
+        let progress = self.progress.build_with_message(
+            pages.len(),
+            format!(
+                "Downloading {}...",
+                episode.title().unwrap_or("Unknown episode".to_string())
+            ),
+        )?;
+
+        stream::iter(pages)
             .enumerate()
             .map(|(i, page)| async move { Ok((i, page.clone(), self.fetch_image(&page).await?)) })
             .buffer_unordered(self.num_connections)
@@ -238,6 +243,11 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
                 async move { Ok((i, self.write(&writer, i, image).await?)) }
             })
             .try_buffer_unordered(self.num_threads)
+            .map_ok(|_| {
+                progress.inc(1);
+                async move { Ok(()) }
+            })
+            .try_buffered(self.num_threads)
             .try_collect::<Vec<_>>()
             .await?;
 
