@@ -6,6 +6,7 @@ use url::Url;
 
 use crate::{
     data::{MangaEpisode, MangaPage},
+    io::{EpisodeWriter, FileWriter},
     progress::ProgressConfig,
     utils::Bytes,
 };
@@ -81,21 +82,35 @@ pub trait EpisodePipeline<P: MangaPage, E: MangaEpisode<P>> {
         page: Option<P>,
     ) -> impl Future<Output = Result<DynamicImage>> + Send;
 
-    fn write_image_bytes<T: AsRef<Path>>(
-        &self,
-        images: Vec<Bytes>,
-        path: T,
-    ) -> impl Future<Output = Result<()>>;
+    // fn get_writer<Pa: AsRef<Path>>(&self, path: Pa) -> Result<FileWriter>;
 
-    fn write_images<T: AsRef<Path>>(
+    fn file_writer<T: AsRef<Path>>(&self, save_path: &T) -> Result<FileWriter>;
+
+    async fn write(
         &self,
-        images: Vec<DynamicImage>,
-        path: T,
-    ) -> impl Future<Output = Result<()>>;
+        file_writer: &FileWriter,
+        page: usize,
+        image: DynamicImage,
+    ) -> Result<()> {
+        match file_writer {
+            FileWriter::Raw(writer) => {
+                writer.write_page(page, image).await?;
+            }
+            FileWriter::Zip(writer) => {
+                writer.write_page(page, image).await?;
+            }
+            #[cfg(feature = "pdf")]
+            FileWriter::Pdf(writer) => {
+                writer.write_page(page, image).await?;
+            }
+        }
+
+        Ok(())
+    }
 
     /// Just download in the specified path
-    fn download<T: AsRef<Path>>(&self, url: &Url, path: T) -> impl Future<Output = Result<()>>;
+    fn download<T: AsRef<Path>>(&self, url: &Url, path: &T) -> impl Future<Output = Result<()>>;
 
     /// Download with a new folder or file in the specified directory
-    fn download_in<T: AsRef<Path>>(&self, url: &Url, dir: T) -> impl Future<Output = Result<()>>;
+    fn download_in<T: AsRef<Path>>(&self, url: &Url, dir: &T) -> impl Future<Output = Result<()>>;
 }

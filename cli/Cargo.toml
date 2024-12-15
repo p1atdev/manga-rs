@@ -8,7 +8,7 @@ name = "manga"
 path = "src/main.rs"
 
 [dependencies]
-manga = { path = "../manga", features = ["fuz", "pdf"] }
+manga = { path = "../manga", features = ["fuz"] }
 
 anyhow = "1.0.93"
 clap = "4.5.20"

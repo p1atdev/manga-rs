@@ -59,11 +59,6 @@ impl Solver {
                 let target_y = target_tl.1 + y;
                 let source_pixel = source.get_pixel(source_x, source_y);
 
-                // println!(
-                //     "source_x: {}, source_y: {}, target_x: {}, target_y: {}",
-                //     source_x, source_y, target_x, target_y
-                // );
-
                 canvas
                     .lock()
                     .unwrap()

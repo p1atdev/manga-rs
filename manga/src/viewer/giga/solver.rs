@@ -47,15 +47,15 @@ impl Solver {
         let (source_x, source_y) = source_tl;
         let (target_x, target_y) = target_tl;
 
-        for x in 0..width {
-            for y in 0..height {
+        (0..width)
+            .flat_map(move |x| (0..height).map(move |y| (x, y)))
+            .for_each(|(x, y)| {
                 let source_pixel = img.get_pixel(source_x + x, source_y + y).clone();
                 let target_pixel = img.get_pixel(target_x + x, target_y + y);
 
                 img.put_pixel(source_x + x, source_y + y, *target_pixel);
                 img.put_pixel(target_x + x, target_y + y, source_pixel);
-            }
-        }
+            });
     }
 
     fn solve_buffer(
@@ -69,19 +69,17 @@ impl Solver {
 
         let mut img = buffer.clone();
 
-        for i in 0..self.num_cells {
-            for j in 0..self.num_cells {
-                if j <= i {
-                    // only swap the upper triangle
-                    continue;
-                }
+        let indices = (0..self.num_cells)
+            .flat_map(|i| (0..self.num_cells).map(move |j| (i, j)))
+            .filter(|&(i, j)| j > i)
+            .collect::<Vec<_>>();
 
-                let source = (i * cell_width, j * cell_height);
-                let target = (j * cell_width, i * cell_height);
+        indices.iter().for_each(|&(i, j)| {
+            let source = (i * cell_width, j * cell_height);
+            let target = (j * cell_width, i * cell_height);
 
-                self.swap_regions(&mut img, source, target, cell_width, cell_height);
-            }
-        }
+            self.swap_regions(&mut img, source, target, cell_width, cell_height);
+        });
 
         Ok(img)
     }

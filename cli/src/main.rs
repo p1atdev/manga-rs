@@ -47,7 +47,7 @@ enum SaveFormat {
     Raw,
     Zip,
     Cbz,
-    Pdf,
+    // Pdf,
 }
 
 fn get_save_format(save: SaveFormat) -> manga::pipeline::SaveFormat {
@@ -61,7 +61,7 @@ fn get_save_format(save: SaveFormat) -> manga::pipeline::SaveFormat {
             compression_method: zip::CompressionMethod::Deflated,
             extension: Some("cbz".to_string()),
         },
-        SaveFormat::Pdf => manga::pipeline::SaveFormat::Pdf,
+        // SaveFormat::Pdf => manga::pipeline::SaveFormat::Pdf,
     }
 }
 
@@ -99,7 +99,7 @@ async fn main() -> Result<()> {
                     .set_progress(progress)
                     .set_writer_config(WriterConifg::new(save_format, image_format));
 
-                pipe.download_in(&url, output_dir).await?;
+                pipe.download_in(&url, &output_dir).await?;
 
                 return Ok(());
             }
@@ -110,7 +110,7 @@ async fn main() -> Result<()> {
                     .set_progress(progress)
                     .set_writer_config(WriterConifg::new(save_format, image_format));
 
-                pipe.download_in(&url, output_dir).await?;
+                pipe.download_in(&url, &output_dir).await?;
 
                 return Ok(());
             }
@@ -118,6 +118,4 @@ async fn main() -> Result<()> {
             bail!("Website not supported: {}", host);
         }
     };
-
-    Ok(())
 }

@@ -3,14 +3,13 @@ use std::{path::Path, sync::Arc};
 use anyhow::{Context, Ok, Result};
 use futures::{stream, StreamExt, TryStreamExt};
 use image::DynamicImage;
-use rayon::slice::ParallelSliceMut;
 use url::Url;
 
 #[cfg(feature = "pdf")]
 use crate::io::pdf::PdfWriter;
 use crate::{
     data::MangaEpisode,
-    io::{raw::RawWriter, zip::ZipWriter, EpisodeWriter},
+    io::FileWriter,
     pipeline::{EpisodePipeline, EpisodePipelineBuilder, SaveFormat, WriterConifg},
     progress::ProgressConfig,
     solver::ImageSolver,
@@ -32,22 +31,25 @@ pub struct Pipeline {
     writer_config: WriterConifg,
     num_threads: usize,
     num_connections: usize,
+    // file_writer: Arc<FileWriter>,
 }
 
 impl Default for Pipeline {
     fn default() -> Self {
+        let writer_config = WriterConifg::new(SaveFormat::Raw, image::ImageFormat::Png);
         Self {
             client: Client::new(ConfigBuilder::new(Website::ShonenJumpPlus).build()),
             progress: ProgressConfig::default(),
-            writer_config: WriterConifg::new(SaveFormat::Raw, image::ImageFormat::Png),
             num_threads: num_cpus::get(),
             num_connections: 8,
+            // file_writer: Arc::new(FileWriter::new(&writer_config, &"./").unwrap()),
+            writer_config, // must be after file_writer
         }
     }
 }
 
 impl Pipeline {
-    pub fn new(
+    pub fn new<P: AsRef<Path>>(
         website: Website,
         progress: ProgressConfig,
         writer_config: WriterConifg,
@@ -57,10 +59,10 @@ impl Pipeline {
         let client = Client::new(ConfigBuilder::new(website).build());
         Self {
             client,
-            progress,
-            writer_config,
+            progress: progress.clone(),
             num_threads,
             num_connections,
+            writer_config,
         }
     }
 }
@@ -119,96 +121,36 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
     }
 
     async fn solve_image_bytes(&self, image: Bytes, _page: Option<Page>) -> Result<Bytes> {
-        let solver = Arc::new(Solver::new());
-        let image = solver.solve(image)?;
-        Ok(image)
+        tokio::task::spawn_blocking(move || {
+            let solver = Arc::new(Solver::new());
+            let image = solver.solve(image)?;
+            Ok(image)
+        })
+        .await?
     }
 
     async fn solve_image(&self, image: Bytes, _page: Option<Page>) -> Result<DynamicImage> {
-        let solver = Arc::new(Solver::new());
-        let image = solver.solve_from_bytes(image)?;
-        Ok(image)
+        tokio::task::spawn_blocking(move || {
+            let solver = Arc::new(Solver::new());
+            let image = solver.solve_from_bytes(image)?;
+            Ok(image)
+        })
+        .await?
     }
 
-    async fn write_image_bytes<T: AsRef<Path>>(&self, images: Vec<Bytes>, path: T) -> Result<()> {
-        let writer_config = &self.writer_config;
-
-        match writer_config.save_format() {
-            SaveFormat::Raw => {
-                let writer = RawWriter::new(
-                    self.progress.clone(),
-                    self.writer_config.image_format(),
-                    self.num_threads,
-                );
-                writer.write(images, path).await?;
-            }
-            SaveFormat::Zip {
-                compression_method,
-                extension,
-            } => {
-                let writer = ZipWriter::new(
-                    compression_method,
-                    self.writer_config.image_format(),
-                    extension,
-                    self.num_threads,
-                    self.progress.clone(),
-                );
-                writer.write(images, path).await?;
-            }
-            #[cfg(feature = "pdf")]
-            SaveFormat::Pdf => {
-                let writer =
-                    PdfWriter::new(self.progress.clone(), self.writer_config.image_format());
-                writer.write(images, path).await?;
-            }
-        }
-
-        Ok(())
+    fn file_writer<P: AsRef<Path>>(&self, save_path: &P) -> Result<FileWriter> {
+        FileWriter::new(&self.writer_config, save_path)
     }
 
-    async fn write_images<T: AsRef<Path>>(&self, images: Vec<DynamicImage>, path: T) -> Result<()> {
-        let writer_config = &self.writer_config;
-
-        match writer_config.save_format() {
-            SaveFormat::Raw => {
-                let writer = RawWriter::new(
-                    self.progress.clone(),
-                    self.writer_config.image_format(),
-                    self.num_threads,
-                );
-                writer.write_images(images, path).await?;
-            }
-            SaveFormat::Zip {
-                compression_method,
-                extension,
-            } => {
-                let writer = ZipWriter::new(
-                    compression_method,
-                    self.writer_config.image_format(),
-                    extension,
-                    self.num_threads,
-                    self.progress.clone(),
-                );
-                writer.write_images(images, path).await?;
-            }
-            #[cfg(feature = "pdf")]
-            SaveFormat::Pdf => {
-                let writer =
-                    PdfWriter::new(self.progress.clone(), self.writer_config.image_format());
-                writer.write_images(images, path).await?;
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn download<T: AsRef<Path>>(&self, url: &Url, path: T) -> Result<()> {
+    /// Download an episode to the specified path
+    async fn download<P: AsRef<Path>>(&self, url: &Url, path: &P) -> Result<()> {
         let episode_id = self.parse_episode_id(url)?;
         let episode = self.fetch_episode(&episode_id).await?;
+        let writer = self.file_writer(&path)?;
+        writer.prepare().await?;
 
         let pages = episode.pages();
-        let mut images = self
-            .progress
+        self.progress
             .build_with_message(
                 pages.len(),
                 format!(
@@ -222,19 +164,19 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
             .buffer_unordered(self.num_connections)
             .map_ok(|(i, image)| async move { Ok((i, self.solve_image(image, None).await?)) })
             .try_buffer_unordered(self.num_threads)
+            // .map_ok(|(i, image)| {
+            //     let writer = writer.clone();
+            //     async move { Ok((i, self.write(&writer, i, image).await?)) }
+            // })
+            // .try_buffer_unordered(self.num_threads)
             .try_collect::<Vec<_>>()
             .await?;
-        images.par_sort_by_key(|&(i, _)| i);
-        let images = images
-            .into_iter()
-            .map(|(_, image)| image)
-            .collect::<Vec<_>>();
 
-        self.write_images(images, path).await?;
         Ok(())
     }
 
-    async fn download_in<T: AsRef<Path>>(&self, url: &Url, dir: T) -> Result<()> {
+    /// Download an episode into the specified directory
+    async fn download_in<T: AsRef<Path>>(&self, url: &Url, dir: &T) -> Result<()> {
         let episode_id = self.parse_episode_id(url)?;
         let episode = self.fetch_episode(&episode_id).await?;
 
@@ -251,10 +193,11 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
                 path.set_extension("pdf");
             }
         }
+        let writer = self.file_writer(&path)?;
+        writer.prepare().await?;
 
         let pages = episode.pages();
-        let mut images = self
-            .progress
+        self.progress
             .build_with_message(
                 pages.len(),
                 format!(
@@ -268,15 +211,13 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
             .buffer_unordered(self.num_connections)
             .map_ok(|(i, image)| async move { Ok((i, self.solve_image(image, None).await?)) })
             .try_buffer_unordered(self.num_threads)
+            .map_ok(|(i, image)| {
+                let writer = writer.clone();
+                async move { Ok((i, self.write(&writer, i, image).await?)) }
+            })
+            .try_buffer_unordered(self.num_threads)
             .try_collect::<Vec<_>>()
             .await?;
-        images.par_sort_by_key(|&(i, _)| i);
-        let images = images
-            .into_iter()
-            .map(|(_, image)| image)
-            .collect::<Vec<_>>();
-
-        self.write_images(images, path).await?;
         Ok(())
     }
 }
@@ -293,9 +234,9 @@ mod test {
         let url = Url::parse("https://shonenjumpplus.com/episode/16457717013869519536")?;
         let path = "tests/output/giga_pipe_raw";
 
-        let pipe = Pipeline::default();
+        let pipe = Pipeline::default().set_num_threads(16);
 
-        pipe.download(&url, path).await?;
+        pipe.download(&url, &path).await?;
         Ok(())
     }
 
@@ -304,15 +245,17 @@ mod test {
         let url = Url::parse("https://shonenjumpplus.com/episode/16457717013869519536")?;
         let path = "tests/output/giga_pipe_zip.zip";
 
-        let pipe = Pipeline::default().set_writer_config(WriterConifg::new(
-            SaveFormat::Zip {
-                compression_method: zip::CompressionMethod::Zstd,
-                extension: None,
-            },
-            image::ImageFormat::WebP,
-        ));
+        let pipe = Pipeline::default()
+            .set_num_threads(16)
+            .set_writer_config(WriterConifg::new(
+                SaveFormat::Zip {
+                    compression_method: zip::CompressionMethod::Deflated,
+                    extension: None,
+                },
+                image::ImageFormat::WebP,
+            ));
 
-        pipe.download(&url, path).await?;
+        pipe.download(&url, &path).await?;
         Ok(())
     }
 
@@ -415,7 +358,7 @@ mod test {
                 "comic-ogyaaa",
             ],
             [
-                "https://comic-earthstar.com/episode/2550689798355026496",
+                "https://comic-earthstar.com/episode/14079602755509010990",
                 "comic-earthstar",
             ],
             ["https://ourfeel.jp/episode/2550689798871964571", "ourfeel"],
@@ -423,7 +366,7 @@ mod test {
 
         let writer_config = Arc::new(WriterConifg::new(
             SaveFormat::Zip {
-                compression_method: zip::CompressionMethod::Zstd,
+                compression_method: zip::CompressionMethod::Deflated,
                 extension: Some("cbz".to_string()),
             },
             image::ImageFormat::WebP,
@@ -449,7 +392,7 @@ mod test {
                         .set_website(website)
                         .set_writer_config(writer_config.as_ref().clone());
 
-                    let res = pipe.download(&url, path).await;
+                    let res = pipe.download(&url, &path).await;
                     if let Err(e) = res {
                         anyhow::bail!("Failed to download from {}: {:?}", name, e)
                     }

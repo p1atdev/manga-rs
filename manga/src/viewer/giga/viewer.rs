@@ -232,7 +232,7 @@ impl Client {
 
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
+    use std::{path::Path, sync::Arc};
 
     use futures::{StreamExt as _, TryStreamExt};
     use indicatif::ParallelProgressIterator;
@@ -331,9 +331,20 @@ mod test {
         println!("Saving {} pages", images.len());
 
         tokio::fs::create_dir_all("tests/output/giga_solve_raw").await?;
-        let writer = RawWriter::default();
-        writer
-            .write_images(images, "tests/output/giga_solve_raw")
+        let writer = Arc::new(RawWriter::default(&Path::new(
+            "tests/output/giga_solve_raw",
+        )));
+
+        progress
+            .build(images.len())?
+            .wrap_stream(futures::stream::iter(images))
+            .enumerate()
+            .map(|(i, image)| {
+                let writer = writer.clone();
+                async move { writer.write_page(i, image).await }
+            })
+            .buffer_unordered(num_cpus::get())
+            .try_collect::<Vec<_>>()
             .await?;
 
         Ok(())
@@ -384,9 +395,19 @@ mod test {
 
         println!("Saving as zip...");
 
-        let writer = ZipWriter::default();
-        writer
-            .write_images(images, "tests/output/giga_solve_2.zip")
+        let writer = Arc::new(ZipWriter::default(&Path::new(
+            "tests/output/giga_solve_2.zip",
+        ))?);
+        progress
+            .build(images.len())?
+            .wrap_stream(futures::stream::iter(images))
+            .enumerate()
+            .map(|(i, image)| {
+                let writer = writer.clone();
+                async move { writer.write_page(i, image).await }
+            })
+            .buffer_unordered(num_cpus::get())
+            .try_collect::<Vec<_>>()
             .await?;
 
         Ok(())

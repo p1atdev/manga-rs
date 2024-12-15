@@ -1,15 +1,17 @@
-use std::{io::Write, path::Path, sync::Arc};
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+    sync::{Arc, RwLock},
+};
 
 use anyhow::Result;
-use futures::StreamExt;
 use image::DynamicImage;
-use tokio::sync::Mutex;
 use zip::{
     write::{ExtendedFileOptions, FileOptions},
     CompressionMethod,
 };
 
-use crate::{progress::ProgressConfig, utils};
+use crate::utils;
 
 use super::EpisodeWriter;
 
@@ -18,124 +20,72 @@ use super::EpisodeWriter;
 pub struct ZipWriter {
     compression_method: CompressionMethod,
     image_format: image::ImageFormat,
-    extension: Option<String>,
-    progress: ProgressConfig,
-    num_threads: usize,
-    // writer: Arc<Mutex<zip::ZipWriter<std::fs::File>>>,
+    save_path: PathBuf,
+    writer: Arc<RwLock<zip::ZipWriter<std::fs::File>>>,
 }
 
 impl ZipWriter {
-    pub fn default() -> Self {
-        ZipWriter {
-            compression_method: CompressionMethod::Zstd,
-            image_format: image::ImageFormat::Png,
-            extension: Some("zip".to_string()),
-            num_threads: num_cpus::get(),
-            progress: ProgressConfig::default(),
-        }
-    }
-
-    pub fn new(
+    pub fn new<P: AsRef<Path>>(
         compression_method: CompressionMethod,
         image_format: image::ImageFormat,
         extension: Option<String>,
-        num_threads: usize,
-        progress: ProgressConfig,
-    ) -> Self {
-        ZipWriter {
+        save_path: &P,
+    ) -> Result<Self> {
+        let file = std::fs::File::create(
+            save_path
+                .as_ref()
+                .with_extension(extension.clone().unwrap_or("zip".to_string())),
+        )?;
+        let writer = Arc::new(RwLock::new(zip::ZipWriter::new(file)));
+
+        Ok(ZipWriter {
             compression_method,
             image_format,
-            extension,
-            num_threads,
-            progress,
-        }
+            save_path: save_path.as_ref().to_path_buf(),
+            writer,
+        })
     }
 
-    fn extension(&self) -> String {
-        if let Some(e) = &self.extension {
-            e.clone()
-        } else {
-            "zip".to_string()
-        }
+    pub fn default<P: AsRef<Path>>(save_path: &P) -> Result<Self> {
+        let file = std::fs::File::create(save_path.as_ref().with_extension("zip".to_string()))?;
+        let writer = Arc::new(RwLock::new(zip::ZipWriter::new(file)));
+
+        Ok(ZipWriter {
+            compression_method: CompressionMethod::Zstd,
+            image_format: image::ImageFormat::Png,
+            save_path: save_path.as_ref().to_path_buf(),
+            writer,
+        })
     }
 }
 
 impl EpisodeWriter for ZipWriter {
-    async fn write<P: AsRef<Path>, B: AsRef<[u8]>>(&self, images: Vec<B>, path: P) -> Result<()> {
-        let file = std::fs::File::create(path.as_ref().with_extension(self.extension()))?;
-        let zip = Arc::new(Mutex::new(zip::ZipWriter::new(file)));
+    fn save_path(&self) -> PathBuf {
+        self.save_path.clone()
+    }
 
-        let image_format = self.image_format;
-        let compression_method = self.compression_method;
-        let images = images
-            .into_iter()
-            .map(|bytes| bytes.as_ref().to_vec())
-            .collect::<Vec<_>>();
-
-        self.progress
-            .build_with_message(images.len(), "Writing the zip...")?
-            .wrap_stream(futures::stream::iter(images))
-            .enumerate()
-            .map(|pair| {
-                let zip = zip.clone();
-                let options = FileOptions::<ExtendedFileOptions>::default()
-                    .compression_method(compression_method);
-                async move {
-                    let (i, bytes) = pair;
-                    let mut zip = zip.lock().await;
-                    zip.start_file(
-                        format!("{}.{}", i, image_format.extensions_str()[0]),
-                        options,
-                    )?;
-                    zip.write_all(&bytes)?;
-                    Result::<_>::Ok(())
-                }
-            })
-            .buffer_unordered(self.num_threads)
-            .collect::<Vec<_>>()
-            .await;
+    async fn prepare(&self) -> Result<()> {
+        // mkdir parent directory
+        let parent = self.save_path.parent().unwrap();
+        tokio::fs::create_dir_all(parent).await?;
 
         Ok(())
     }
 
-    /// Save images as a zip file.
-    async fn write_images<P: AsRef<Path>>(&self, images: Vec<DynamicImage>, path: P) -> Result<()> {
-        let file = std::fs::File::create(path.as_ref().with_extension(self.extension()))?;
-        let zip = Arc::new(Mutex::new(zip::ZipWriter::new(file)));
-        let image_format = self.image_format;
-        let compression_method = self.compression_method;
+    async fn write_page(&self, page: usize, image: DynamicImage) -> Result<()> {
+        let options = FileOptions::<ExtendedFileOptions>::default()
+            .compression_method(self.compression_method);
+        let image_format = self.image_format.clone();
+        let writer = self.writer.clone();
+        let file_name = format!("{}.{}", page, image_format.extensions_str()[0]);
 
-        self.progress
-            .build_with_message(images.len(), "Writing the zip...")?
-            .wrap_stream(futures::stream::iter(images))
-            .enumerate()
-            .map(|(i, image)| {
-                tokio::task::spawn_blocking(move || {
-                    let bytes = utils::encode_image(&image, image_format)?;
-                    Result::<_>::Ok((i, bytes))
-                })
-            })
-            .buffer_unordered(self.num_threads)
-            .map(|pair| pair?)
-            .map(|pair| {
-                let zip = zip.clone();
-                let options = FileOptions::<ExtendedFileOptions>::default()
-                    .compression_method(compression_method);
-                async move {
-                    let (i, bytes) = pair?;
-                    let mut zip = zip.lock().await;
-                    zip.start_file(
-                        format!("{}.{}", i, image_format.extensions_str()[0]),
-                        options,
-                    )?;
-                    zip.write_all(&bytes)?;
-                    Result::<_>::Ok(())
-                }
-            })
-            .buffer_unordered(self.num_threads)
-            .collect::<Vec<_>>()
-            .await;
-
-        Ok(())
+        tokio::task::spawn_blocking(move || {
+            let byte = utils::encode_image(&image, image_format)?;
+            let mut zip = writer.write().unwrap();
+            zip.start_file(file_name, options)?;
+            zip.write_all(&byte)?;
+            Ok(())
+        })
+        .await?
     }
 }

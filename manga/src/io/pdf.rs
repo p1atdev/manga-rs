@@ -22,21 +22,24 @@ use super::EpisodeWriter;
 #[derive(Debug, Clone)]
 pub struct PdfWriter {
     // num_threads: usize,
-    progress: ProgressConfig,
+    // progress: ProgressConfig,
     image_format: image::ImageFormat,
 }
 
 impl PdfWriter {
-    pub fn new(progress: ProgressConfig, image_format: ImageFormat) -> Self {
+    pub fn new(
+        // progress: ProgressConfig,
+        image_format: ImageFormat,
+    ) -> Self {
         PdfWriter {
-            progress,
+            // progress,
             image_format,
         }
     }
 
     pub fn default() -> Self {
         PdfWriter {
-            progress: ProgressConfig::default(),
+            // progress: ProgressConfig::default(),
             image_format: image::ImageFormat::Jpeg,
         }
     }
@@ -133,107 +136,108 @@ impl PdfWriter {
 }
 
 impl EpisodeWriter for PdfWriter {
-    async fn write<P: AsRef<Path>, B: AsRef<[u8]>>(&self, images: Vec<B>, path: P) -> Result<()> {
-        let (mut pdf, mut ref_id, page_tree_id) = Self::new_pdf();
+    async fn write_page(&self, image: image::DynamicImage, page: usize) -> Result<()> {}
+    // async fn write<P: AsRef<Path>, B: AsRef<[u8]>>(&self, images: Vec<B>, path: P) -> Result<()> {
+    //     let (mut pdf, mut ref_id, page_tree_id) = Self::new_pdf();
 
-        let images: Vec<Bytes> = images
-            .into_iter()
-            .map(|bytes| bytes.as_ref().into())
-            .collect();
-        let images_len = images.len();
-        let encoded = images
-            .into_par_iter()
-            .progress_with(
-                self.progress
-                    .build_with_message(images_len, "Encoding images...")?,
-            )
-            .map(|image| {
-                // get width and height without full decode
-                let reader = ImageReader::new(Cursor::new(image.clone())).with_guessed_format()?;
-                let (width, height) = reader.into_dimensions()?;
-                let image_bytes = self.compress_image_bytes_if_needed(image)?;
-                Result::<_>::Ok((image_bytes, width, height))
-            })
-            .map(|pair| pair.unwrap())
-            .collect::<Vec<_>>();
+    //     let images: Vec<Bytes> = images
+    //         .into_iter()
+    //         .map(|bytes| bytes.as_ref().into())
+    //         .collect();
+    //     let images_len = images.len();
+    //     let encoded = images
+    //         .into_par_iter()
+    //         .progress_with(
+    //             self.progress
+    //                 .build_with_message(images_len, "Encoding images...")?,
+    //         )
+    //         .map(|image| {
+    //             // get width and height without full decode
+    //             let reader = ImageReader::new(Cursor::new(image.clone())).with_guessed_format()?;
+    //             let (width, height) = reader.into_dimensions()?;
+    //             let image_bytes = self.compress_image_bytes_if_needed(image)?;
+    //             Result::<_>::Ok((image_bytes, width, height))
+    //         })
+    //         .map(|pair| pair.unwrap())
+    //         .collect::<Vec<_>>();
 
-        let page_ids = encoded
-            .into_iter()
-            .progress_with(
-                self.progress
-                    .build_with_message(images_len, "Building a PDF...")?,
-            )
-            .map(|(bytes, width, height)| {
-                self.add_image_page(bytes, width, height, &mut pdf, &mut ref_id, &page_tree_id)
-            })
-            .collect::<Vec<_>>();
+    //     let page_ids = encoded
+    //         .into_iter()
+    //         .progress_with(
+    //             self.progress
+    //                 .build_with_message(images_len, "Building a PDF...")?,
+    //         )
+    //         .map(|(bytes, width, height)| {
+    //             self.add_image_page(bytes, width, height, &mut pdf, &mut ref_id, &page_tree_id)
+    //         })
+    //         .collect::<Vec<_>>();
 
-        pdf.pages(page_tree_id)
-            .count(page_ids.len() as i32)
-            .kids(page_ids);
+    //     pdf.pages(page_tree_id)
+    //         .count(page_ids.len() as i32)
+    //         .kids(page_ids);
 
-        // save
-        let mut file = File::options()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)
-            .await?;
-        file.write_all(pdf.finish().as_ref()).await?;
+    //     // save
+    //     let mut file = File::options()
+    //         .write(true)
+    //         .create(true)
+    //         .truncate(true)
+    //         .open(path)
+    //         .await?;
+    //     file.write_all(pdf.finish().as_ref()).await?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    async fn write_images<P: AsRef<Path>>(
-        &self,
-        images: Vec<image::DynamicImage>,
-        path: P,
-    ) -> Result<()> {
-        let (mut pdf, mut ref_id, page_tree_id) = Self::new_pdf();
+    // async fn write_images<P: AsRef<Path>>(
+    //     &self,
+    //     images: Vec<image::DynamicImage>,
+    //     path: P,
+    // ) -> Result<()> {
+    //     let (mut pdf, mut ref_id, page_tree_id) = Self::new_pdf();
 
-        let image_format = self.image_format;
+    //     let image_format = self.image_format;
 
-        let images_len = images.len();
-        let encoded = images
-            .into_par_iter()
-            .progress_with(
-                self.progress
-                    .build_with_message(images_len, "Encoding images...")?,
-            )
-            .map(|image| {
-                let (width, height) = image.dimensions();
-                let bytes = utils::encode_image(&image, image_format)?;
-                Result::<_>::Ok((bytes, width, height))
-            })
-            .map(|pair| pair.unwrap())
-            .collect::<Vec<_>>();
+    //     let images_len = images.len();
+    //     let encoded = images
+    //         .into_par_iter()
+    //         .progress_with(
+    //             self.progress
+    //                 .build_with_message(images_len, "Encoding images...")?,
+    //         )
+    //         .map(|image| {
+    //             let (width, height) = image.dimensions();
+    //             let bytes = utils::encode_image(&image, image_format)?;
+    //             Result::<_>::Ok((bytes, width, height))
+    //         })
+    //         .map(|pair| pair.unwrap())
+    //         .collect::<Vec<_>>();
 
-        let page_ids = encoded
-            .into_iter()
-            .progress_with(
-                self.progress
-                    .build_with_message(images_len, "Building a PDF...")?,
-            )
-            .map(|(bytes, width, height)| {
-                self.add_image_page(bytes, width, height, &mut pdf, &mut ref_id, &page_tree_id)
-            })
-            .collect::<Vec<_>>();
+    //     let page_ids = encoded
+    //         .into_iter()
+    //         .progress_with(
+    //             self.progress
+    //                 .build_with_message(images_len, "Building a PDF...")?,
+    //         )
+    //         .map(|(bytes, width, height)| {
+    //             self.add_image_page(bytes, width, height, &mut pdf, &mut ref_id, &page_tree_id)
+    //         })
+    //         .collect::<Vec<_>>();
 
-        pdf.pages(page_tree_id)
-            .count(page_ids.len() as i32)
-            .kids(page_ids);
+    //     pdf.pages(page_tree_id)
+    //         .count(page_ids.len() as i32)
+    //         .kids(page_ids);
 
-        // save
-        let mut file = File::options()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)
-            .await?;
-        file.write_all(pdf.finish().as_ref()).await?;
+    //     // save
+    //     let mut file = File::options()
+    //         .write(true)
+    //         .create(true)
+    //         .truncate(true)
+    //         .open(path)
+    //         .await?;
+    //     file.write_all(pdf.finish().as_ref()).await?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }
 
 #[cfg(test)]
