@@ -27,3 +27,10 @@ Cargo.lock
 .DS_Store
 
 output
+
+# Added by cargo
+#
+# already existing elements were commented out
+
+#/target
+.rustc_info.json

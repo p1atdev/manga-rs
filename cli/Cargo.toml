@@ -1,0 +1,18 @@
+[package]
+name = "cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "manga"
+path = "src/main.rs"
+
+[dependencies]
+manga = { path = "../manga", features = ["fuz"] }
+
+anyhow = "1.0.93"
+clap = "4.5.20"
+url = "2.5.3"
+zip = "2.2.0"
+image = "0.25.5"
+tokio = "1.41.1"

@@ -1,0 +1,56 @@
+[package]
+name = "manga"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "manga"
+path = "src/lib.rs"
+
+
+[features]
+default = ["giga", "fuz"]
+
+giga = ["rss"]
+fuz = ["prost", "prost-build", "aes", "hex", "cbc", "cipher"]
+pdf = ["pdf-writer", "flate2"]
+
+[dependencies]
+anyhow = "1.0.94"
+clap = { version = "4.5.23", features = ["derive"] }
+image = "0.25.5"
+reqwest = "0.12.9"
+serde = { version = "1.0.216", features = ["derive"] }
+serde_json = "1.0.133"
+tokio = { version = "1.42.0", features = ["full"] }
+futures = "0.3.31"
+rayon = "1.10.0"
+base64 = "0.22.1"
+chrono = { version = "0.4.39", features = ["serde"] }
+url = { version = "2.5.4", features = ["serde"] }
+indicatif = { version = "0.17.9", features = ["futures", "rayon", "tokio"] }
+zip = "2.2.1"
+num_cpus = "1.16.0"
+regex = "1.11.1"
+phf = { version = "0.11.2", features = ["macros"] }
+scraper = "0.22.0"
+
+# pdf
+pdf-writer = { version = "0.12.0", optional = true }
+flate2 = { version = "1.0.35", optional = true }
+
+# giga
+rss = { version = "2.0.11", optional = true }
+
+# fuz
+prost = { version = "0.13.4", optional = true }
+aes = { version = "0.8.4", optional = true }
+hex = { version = "0.4.3", optional = true }
+cbc = { version = "0.1.2", optional = true }
+cipher = { version = "0.4.4", features = ["block-padding"], optional = true }
+
+[build-dependencies]
+prost-build = { version = "0.13.4", optional = true }
+
+[profile.test]
+opt-level = 3

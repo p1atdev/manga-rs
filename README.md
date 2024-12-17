@@ -5,7 +5,7 @@ wip
 ## Installation
 
 ```bash
-cargo install --git https://github.com/p1atdev/manga-rs
+cargo install --git https://github.com/p1atdev/manga-rs cli
 ```
 
 ## Usage
@@ -59,6 +59,7 @@ manga episode https://tonarinoyj.jp/episode/2550912964641693231 \
   - [Comic Earthstar](https://comic-earthstar.com)
   - [Ourfeel](https://ourfeel.jp)
 - [x] [Comic FUZ](https://comic-fuz.com)
+- [ ] [Manga Library Z](https://www.mangaz.com)
 - [ ] [Ichijin Plus](https://ichijin-plus.com)
 - [ ] [Kadokomi (former ComicWalker)](https://comic-walker.com)
 - [ ] [Piccoma](https://piccoma.com)

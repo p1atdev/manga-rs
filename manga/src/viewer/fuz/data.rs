@@ -3,7 +3,7 @@ use web_manga_viewer::{
     viewer_page, web_manga_viewer_response::viewer_data, WebMangaViewerResponse,
 };
 
-use crate::data::{MangaEpisode, MangaPage, ScrollDirection};
+use crate::data::{IndexNumber, MangaEpisode, MangaPage, ScrollDirection};
 
 pub mod web_manga_viewer {
     use device_info::{DeviceType, ImageQuality};
@@ -78,7 +78,7 @@ impl ImagePage {
 #[derive(Debug, Clone)]
 pub struct ExtraPage {
     id: u32,
-    index: u32,
+    index: IndexNumber,
     slot_id: u32,
 }
 
@@ -89,7 +89,7 @@ impl Page {
                 if page.is_extra_page() {
                     Page::Extra(ExtraPage {
                         id: page.extra_id(),
-                        index: page.extra_index(),
+                        index: IndexNumber::Int(page.extra_index() as usize),
                         slot_id: page.extra_slot_id(),
                     })
                 } else {
@@ -136,7 +136,7 @@ impl MangaPage for Page {
 #[derive(Debug, Clone)]
 pub struct Episode {
     id: String,
-    index: usize,
+    index: IndexNumber,
     title: String,
     pages: Vec<Page>,
     scroll_direction: ScrollDirection,
@@ -173,7 +173,7 @@ impl From<WebMangaViewerResponse> for Episode {
 
         Self {
             id: chapter.chapter_id.to_string(),
-            index,
+            index: IndexNumber::Int(index),
             title: chapter.chapter_main_name.clone(),
             pages: pages.clone(),
             scroll_direction: scroll_direction,
@@ -186,8 +186,8 @@ impl MangaEpisode<Page> for Episode {
         self.id.clone()
     }
 
-    fn index(&self) -> usize {
-        self.index
+    fn index(&self) -> IndexNumber {
+        self.index.clone()
     }
 
     fn title(&self) -> Option<String> {

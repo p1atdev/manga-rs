@@ -1,9 +1,10 @@
 use std::sync::LazyLock;
 
-use anyhow::Result;
+use anyhow::{anyhow, bail, Result};
 use regex::Regex;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::Response;
+use scraper::{Html, Selector};
 use url::Url;
 
 use crate::auth::EmptyAuth;
@@ -195,24 +196,45 @@ impl Client {
     fn compose_episode_url(&self, episode_id: &str) -> Url {
         self.config
             .base_url
-            .join(&format!("/episode/{}.json", episode_id))
+            .join(&format!("/episode/{}", episode_id))
             .unwrap()
     }
 
     /// Get episode
     pub async fn get_episode(&self, episode_id: &str) -> Result<Episode> {
+        self.get_episode_from_html(episode_id).await
+    }
+
+    fn extract_data_from_html(&self, html: &str) -> Result<String> {
+        let document = Html::parse_document(html);
+        let selector = match Selector::parse("script#episode-json") {
+            Ok(selector) => selector,
+            Err(_) => bail!("Failed to parse selector"),
+        };
+        let json = match document.select(&selector).next() {
+            Some(element) => Ok(element
+                .attr("data-value")
+                .ok_or(anyhow!("Failed to extract data-value"))?),
+            None => Err(anyhow!("Failed to find script#episode-json")),
+        }?;
+        Ok(json.to_string())
+    }
+
+    async fn get_episode_from_html(&self, episode_id: &str) -> Result<Episode> {
         let url = self.compose_episode_url(episode_id);
         let res = self.get(url).await?;
-        let episode: Episode = serde_json::from_slice(&res.bytes().await?)?;
+        let html = res.text().await?;
+        let json = self.extract_data_from_html(&html)?;
+        let episode: Episode = serde_json::from_str(&json)?;
         Ok(episode)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
+    use std::{path::Path, sync::Arc};
 
-    use futures::StreamExt as _;
+    use futures::{StreamExt as _, TryStreamExt};
     use indicatif::ParallelProgressIterator;
     use rayon::{
         iter::{IntoParallelRefIterator, ParallelIterator},
@@ -276,20 +298,17 @@ mod test {
             .map(|page| {
                 let client = client.clone();
 
-                tokio::spawn(async move {
+                async move {
                     let url = page.url()?;
                     let res = client.get(url).await?;
                     let bytes = res.bytes().await?;
 
                     Result::<_>::Ok((bytes, page))
-                })
+                }
             })
             .buffer_unordered(4)
-            .map(|pair| pair?)
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
+            .try_collect::<Vec<_>>()
+            .await?;
 
         println!("Solving {} pages", pages.len());
 
@@ -311,10 +330,21 @@ mod test {
 
         println!("Saving {} pages", images.len());
 
-        tokio::fs::create_dir_all("playground/output/giga_solve_raw").await?;
-        let writer = RawWriter::default();
-        writer
-            .write_images(images, "playground/output/giga_solve_raw")
+        tokio::fs::create_dir_all("tests/output/giga_solve_raw").await?;
+        let writer = Arc::new(RawWriter::default(&Path::new(
+            "tests/output/giga_solve_raw",
+        )));
+
+        progress
+            .build(images.len())?
+            .wrap_stream(futures::stream::iter(images))
+            .enumerate()
+            .map(|(i, image)| {
+                let writer = writer.clone();
+                async move { writer.write_page(i, image).await }
+            })
+            .buffer_unordered(num_cpus::get())
+            .try_collect::<Vec<_>>()
             .await?;
 
         Ok(())
@@ -339,20 +369,17 @@ mod test {
             .map(|page| {
                 let client = client.clone();
 
-                tokio::spawn(async move {
+                async move {
                     let url = page.url()?;
                     let res = client.get(url).await?;
                     let bytes = res.bytes().await?;
 
                     Result::<_>::Ok(bytes)
-                })
+                }
             })
             .buffer_unordered(4)
-            .map(|bytes| bytes?)
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
+            .try_collect::<Vec<_>>()
+            .await?;
 
         println!("Solving {} pages", pages.len());
 
@@ -368,9 +395,19 @@ mod test {
 
         println!("Saving as zip...");
 
-        let writer = ZipWriter::default();
-        writer
-            .write_images(images, "playground/output/giga_solve_2.zip")
+        let writer = Arc::new(ZipWriter::default(&Path::new(
+            "tests/output/giga_solve_2.zip",
+        ))?);
+        progress
+            .build(images.len())?
+            .wrap_stream(futures::stream::iter(images))
+            .enumerate()
+            .map(|(i, image)| {
+                let writer = writer.clone();
+                async move { writer.write_page(i, image).await }
+            })
+            .buffer_unordered(num_cpus::get())
+            .try_collect::<Vec<_>>()
             .await?;
 
         Ok(())
@@ -396,20 +433,17 @@ mod test {
             .map(|page| {
                 let client = client.clone();
 
-                tokio::spawn(async move {
+                async move {
                     let url = page.url()?;
                     let res = client.get(url).await?;
                     let bytes = res.bytes().await?;
 
                     Result::<_>::Ok(bytes)
-                })
+                }
             })
             .buffer_unordered(4)
-            .map(|bytes| bytes?)
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
+            .try_collect::<Vec<_>>()
+            .await?;
 
         println!("Solving {} pages", pages.len());
 
@@ -427,7 +461,7 @@ mod test {
 
         let writer = PdfWriter::default();
         writer
-            .write_images(images, "playground/output/giga_solve_3.pdf")
+            .write_images(images, "tests/output/giga_solve_3.pdf")
             .await?;
 
         Ok(())

@@ -6,7 +6,7 @@ use serde::de::{SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use url::Url;
 
-use crate::data::{MangaEpisode, MangaPage};
+use crate::data::{IndexNumber, MangaEpisode, MangaPage};
 
 /// ChojuGiga viewer page struct
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -109,7 +109,7 @@ pub enum Episode {
         #[serde(alias = "nextReadableProductUri")]
         next_episode_url: Option<Url>,
         #[serde(alias = "number")]
-        index: usize,
+        index: IndexNumber,
         page_structure: Option<EpisodePageStructure>,
         #[serde(alias = "permalink")]
         url: Url,
@@ -164,9 +164,9 @@ impl MangaEpisode<Page> for Episode {
         }
     }
 
-    fn index(&self) -> usize {
+    fn index(&self) -> IndexNumber {
         match self {
-            Episode::ReadableProduct { index, .. } => *index,
+            Episode::ReadableProduct { index, .. } => index.clone(),
         }
     }
 
