@@ -114,3 +114,22 @@ pub trait EpisodePipeline<P: MangaPage, E: MangaEpisode<P>> {
     /// Download with a new folder or file in the specified directory
     fn download_in<T: AsRef<Path>>(&self, url: &Url, dir: &T) -> impl Future<Output = Result<()>>;
 }
+
+/// Pipeline to download multiple episodes
+pub trait SeriesPipeline<P: MangaPage, E: MangaEpisode<P>> {
+    fn get_episode_urls(&self, url: Url) -> impl Future<Output = Result<Vec<Url>>>;
+
+    /// Download with a new folder or file in the specified directory
+    fn download_series<T: AsRef<Path>>(
+        &self,
+        url: &Url,
+        dir: &T,
+    ) -> impl Future<Output = Result<()>>;
+
+    /// Download multiple episodes specified by the urls
+    fn download_episodes<T: AsRef<Path>>(
+        &self,
+        urls: Vec<Url>,
+        dir: &T,
+    ) -> impl Future<Output = Result<()>>;
+}

@@ -9,7 +9,7 @@ pub mod mangaz;
 use std::future::Future;
 
 use anyhow::Result;
-use reqwest::{header::HeaderMap, Response};
+use reqwest::{header::HeaderMap, IntoUrl, Response};
 use url::Url;
 
 use crate::auth::Auth;

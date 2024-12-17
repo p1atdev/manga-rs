@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 use anyhow::{anyhow, bail, Result};
 use regex::Regex;
 use reqwest::header::{self, HeaderMap, HeaderValue};
-use reqwest::Response;
+use reqwest::{IntoUrl, Response};
 use scraper::{Html, Selector};
 use url::Url;
 
