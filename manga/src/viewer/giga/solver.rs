@@ -41,14 +41,14 @@ impl Solver {
         source_tl: (u32, u32),
         // target_tl: target top left (x, y)
         target_tl: (u32, u32),
-        width: u32,
-        height: u32,
+        cell_width: u32,
+        cell_height: u32,
     ) {
         let (source_x, source_y) = source_tl;
         let (target_x, target_y) = target_tl;
 
-        (0..width)
-            .flat_map(move |x| (0..height).map(move |y| (x, y)))
+        (0..cell_width)
+            .flat_map(move |x| (0..cell_height).map(move |y| (x, y)))
             .for_each(|(x, y)| {
                 let source_pixel = img.get_pixel(source_x + x, source_y + y).clone();
                 let target_pixel = img.get_pixel(target_x + x, target_y + y);
