@@ -9,6 +9,7 @@ use scraper::{Html, Selector};
 use url::Url;
 
 use crate::auth::EmptyAuth;
+use crate::error::ClientError;
 use crate::utils;
 use crate::viewer::mangaz::data::Episode;
 use crate::viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder, ViewerWebsite};
@@ -65,15 +66,17 @@ pub struct Config {
 }
 
 impl ViewerConfig for Config {
-    fn create_header(&self) -> Result<HeaderMap> {
+    fn create_header(&self) -> Result<HeaderMap, ClientError> {
         let mut headers = HeaderMap::new();
         headers.insert(
             header::USER_AGENT,
-            HeaderValue::from_str(&utils::UserAgent::Bot.value())?,
+            HeaderValue::from_str(&utils::UserAgent::Bot.value())
+                .map_err(|_| ClientError::InvalidHeader)?,
         );
         headers.insert(
             header::REFERER,
-            HeaderValue::from_str(&self.base_url.to_string())?,
+            HeaderValue::from_str(&self.base_url.to_string())
+                .map_err(|_| ClientError::InvalidHeader)?,
         );
         Ok(headers)
     }
@@ -146,7 +149,7 @@ impl ViewerClient<Config> for Client {
         method: reqwest::Method,
         body: Option<B>,
         headers: Option<HeaderMap>,
-    ) -> Result<Response> {
+    ) -> Result<Response, ClientError> {
         let mut req = self
             .client
             .request(method, url)
@@ -157,8 +160,11 @@ impl ViewerClient<Config> for Client {
         if let Some(body) = body {
             req = req.body(body);
         }
-        let res = req.send().await?.error_for_status()?;
-        Ok(res)
+        let res = req.send().await.map_err(|_| ClientError::RequestError)?;
+        if res.status().is_success() {
+            return Ok(res);
+        }
+        Err(self.map_error_status(res.status()))
     }
 
     /// Parse episode id from url

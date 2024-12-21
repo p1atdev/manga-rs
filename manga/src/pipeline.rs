@@ -6,6 +6,7 @@ use url::Url;
 
 use crate::{
     data::{MangaEpisode, MangaPage},
+    error::ClientError,
     io::{EpisodeWriter, FileWriter},
     progress::ProgressConfig,
     utils::Bytes,
@@ -63,10 +64,13 @@ pub trait EpisodePipeline<P: MangaPage, E: MangaEpisode<P>> {
     fn parse_episode_id(&self, url: &Url) -> Result<String>;
 
     /// Fetch the Episode
-    fn fetch_episode(&self, episode_id: &str) -> impl Future<Output = Result<E>> + Send;
+    fn fetch_episode(
+        &self,
+        episode_id: &str,
+    ) -> impl Future<Output = Result<E, ClientError>> + Send;
 
     /// Fetch an image
-    fn fetch_image(&self, page: &P) -> impl Future<Output = Result<Bytes>> + Send;
+    fn fetch_image(&self, page: &P) -> impl Future<Output = Result<Bytes, ClientError>> + Send;
 
     /// Solve the obfuscation
     fn solve_image_bytes(
@@ -113,6 +117,29 @@ pub trait EpisodePipeline<P: MangaPage, E: MangaEpisode<P>> {
 
     /// Download with a new folder or file in the specified directory
     fn download_in<T: AsRef<Path>>(&self, url: &Url, dir: &T) -> impl Future<Output = Result<()>>;
+}
+
+#[derive(Clone, Debug)]
+pub struct EpisodeQueueItem {
+    title: String,
+    url: Url,
+}
+
+impl EpisodeQueueItem {
+    pub fn new(title: &str, url: Url) -> Self {
+        EpisodeQueueItem {
+            title: title.to_string(),
+            url,
+        }
+    }
+
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    pub fn url(&self) -> &Url {
+        &self.url
+    }
 }
 
 /// Pipeline to download multiple episodes

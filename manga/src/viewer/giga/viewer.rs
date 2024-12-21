@@ -3,11 +3,12 @@ use std::sync::LazyLock;
 use anyhow::{anyhow, bail, Result};
 use regex::Regex;
 use reqwest::header::{self, HeaderMap, HeaderValue};
-use reqwest::{IntoUrl, Response};
+use reqwest::{IntoUrl, Response, StatusCode};
 use scraper::{Html, Selector};
 use url::Url;
 
 use crate::auth::EmptyAuth;
+use crate::error::{ClientError, HttpError};
 use crate::feed::{FeedContent, FeedParser};
 use crate::utils;
 use crate::viewer::giga::data::Episode;
@@ -104,11 +105,12 @@ pub struct Config {
 }
 
 impl ViewerConfig for Config {
-    fn create_header(&self) -> Result<HeaderMap> {
+    fn create_header(&self) -> Result<HeaderMap, ClientError> {
         let mut headers = HeaderMap::new();
         headers.insert(
             header::USER_AGENT,
-            HeaderValue::from_str(&utils::UserAgent::Bot.value())?,
+            HeaderValue::from_str(&utils::UserAgent::Bot.value())
+                .map_err(|_| ClientError::InvalidHeader)?,
         );
         Ok(headers)
     }
@@ -170,7 +172,7 @@ impl ViewerClient<Config> for Client {
         method: reqwest::Method,
         body: Option<B>,
         headers: Option<HeaderMap>,
-    ) -> Result<Response> {
+    ) -> Result<Response, ClientError> {
         let mut req = self
             .client
             .request(method, url)
@@ -181,8 +183,11 @@ impl ViewerClient<Config> for Client {
         if let Some(body) = body {
             req = req.body(body);
         }
-        let res = req.send().await?.error_for_status()?;
-        Ok(res)
+        let res = req.send().await.map_err(|_| ClientError::RequestError)?;
+        if res.status().is_success() {
+            return Ok(res);
+        }
+        Err(self.map_error_status(res.status()))
     }
 
     /// Get episode id from the provided url.
@@ -196,16 +201,18 @@ impl ViewerClient<Config> for Client {
 }
 
 impl Client {
-    pub async fn get_html(&self, url: Url) -> Result<Html> {
+    async fn get_html(&self, url: Url) -> Result<Html, ClientError> {
         let res = self.get(url).await?;
-        let html = Html::parse_document(&res.text().await?);
+        let html = Html::parse_document(&res.text().await.map_err(|_| ClientError::DecodeError)?);
         Ok(html)
     }
 
-    pub async fn get_feed(&self, url: Url) -> Result<FeedContent> {
+    async fn get_feed(&self, url: Url) -> Result<FeedContent, ClientError> {
         let res = self.get(url).await?;
         let parser = FeedParser::new();
-        let feed = parser.parse(&res.text().await?)?;
+        let feed = parser
+            .parse(&res.text().await.map_err(|_| ClientError::DecodeError)?)
+            .map_err(|e| ClientError::ParseError(format!("Failed to parse feed: {}", e)))?;
 
         Ok(feed)
     }
@@ -218,31 +225,31 @@ impl Client {
     }
 
     /// Get episode
-    pub async fn get_episode(&self, episode_id: &str) -> Result<Episode> {
+    pub async fn get_episode(&self, episode_id: &str) -> Result<Episode, ClientError> {
         let url = self.compose_episode_url(episode_id);
-        let res = self.get(url).await?;
-        let html = res.text().await?;
-        self.get_episode_from_html(&html).await
+        let html = self.get_html(url).await?;
+        self.get_episode_from_html(&html)
     }
 
-    fn extract_episode_json(&self, html: &str) -> Result<String> {
-        let document = Html::parse_document(html);
-        let selector = match Selector::parse("script#episode-json") {
-            Ok(selector) => selector,
-            Err(_) => bail!("Failed to parse selector"),
-        };
-        let json = match document.select(&selector).next() {
-            Some(element) => Ok(element
-                .attr("data-value")
-                .ok_or(anyhow!("Failed to extract data-value"))?),
-            None => Err(anyhow!("Failed to find script#episode-json")),
+    fn extract_episode_json(&self, html: &Html) -> Result<String, ClientError> {
+        let selector = Selector::parse("script#episode-json").map_err(|_| {
+            ClientError::ParseError("Failed to parse selector script#episode-json".to_string())
+        })?;
+        let json = match html.select(&selector).next() {
+            Some(element) => Ok(element.attr("data-value").ok_or(ClientError::ParseError(
+                "Failed to extract data-value".to_string(),
+            ))?),
+            None => Err(ClientError::ParseError(
+                "Failed to find script#episode-json".to_string(),
+            )),
         }?;
         Ok(json.to_string())
     }
 
-    async fn get_episode_from_html(&self, html: &str) -> Result<Episode> {
+    fn get_episode_from_html(&self, html: &Html) -> Result<Episode, ClientError> {
         let json = self.extract_episode_json(&html)?;
-        let episode: Episode = serde_json::from_str(&json)?;
+        let episode: Episode = serde_json::from_str(&json)
+            .map_err(|_| ClientError::ParseError("Failed to parse episode json".to_string()))?;
         Ok(episode)
     }
 
@@ -254,13 +261,12 @@ impl Client {
             .unwrap()
     }
 
-    fn extract_data_gtm_data_layer(&self, html: &str) -> Result<String> {
-        let document = Html::parse_document(html);
+    fn extract_data_gtm_data_layer(&self, html: &Html) -> Result<String> {
         let selector = match Selector::parse("html") {
             Ok(selector) => selector,
             Err(_) => bail!("Failed to parse selector"),
         };
-        let gtm_data_layer = match document.select(&selector).next() {
+        let gtm_data_layer = match html.select(&selector).next() {
             Some(element) => Ok(element
                 .attr("data-gtm-data-layer")
                 .ok_or(anyhow!("Failed to extract data-gtm-data-layer"))?),
@@ -270,20 +276,19 @@ impl Client {
         Ok(gtm_data_layer.to_string())
     }
 
-    async fn get_gtm_data_from_html(&self, html: &str) -> Result<GtmEpisode> {
+    async fn get_gtm_data_from_html(&self, html: &Html) -> Result<GtmEpisode> {
         let gtm_data = self.extract_data_gtm_data_layer(&html)?;
         let gtm_data: Gtm = serde_json::from_str(&gtm_data)?;
         Ok(gtm_data.episode().clone())
     }
 
-    pub async fn get_series_feed(&self, episode_id: &str) -> Result<FeedContent> {
-        // get series id from the episode's page
-        let url = self.compose_episode_url(episode_id);
-        let res = self.get(url).await?;
-        let html = res.text().await?;
-        let gtm = self.get_gtm_data_from_html(&html).await?;
-        let series_id = gtm.series_id();
+    pub async fn get_series_id(&self, url: Url) -> Result<String> {
+        let html = self.get_html(url).await?;
+        let gtm_data = self.get_gtm_data_from_html(&html).await?;
+        Ok(gtm_data.series_id().to_string())
+    }
 
+    pub async fn get_series_feed(&self, series_id: &str) -> Result<FeedContent, ClientError> {
         let url = self.compose_series_atom_url(&series_id);
         self.get_feed(url).await
     }
@@ -488,16 +493,16 @@ mod test {
 
         let config = ConfigBuilder::new(Website::ShonenJumpPlus).build();
         let client = Client::new(config);
-        let feed = client.get_series_feed(episode_id).await?;
-
-        match feed {
-            FeedContent::FeedRs(feed) => feed.entries.iter().for_each(|entry| {
-                assert!(entry.title.is_some());
-                entry.links.iter().for_each(|link| {
-                    assert!(link.href != "");
-                });
-            }),
-        }
+        let series_id = client
+            .get_series_id(client.compose_episode_url(episode_id))
+            .await?;
+        let feed = client.get_series_feed(&series_id).await?;
+        feed.entries().iter().for_each(|entry| {
+            assert!(entry.title().is_some());
+            entry.links().iter().for_each(|link| {
+                assert!(link.url() != "");
+            });
+        });
 
         Ok(())
     }
