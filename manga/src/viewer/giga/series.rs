@@ -1,6 +1,7 @@
 use anyhow::{Context, Ok, Result};
 use futures::{stream, StreamExt, TryStreamExt};
 use image::DynamicImage;
+use scraper::Html;
 use std::{path::Path, sync::Arc, usize};
 use url::Url;
 
@@ -22,15 +23,21 @@ use super::{
 };
 
 impl Pipeline {
-    async fn get_html(&self, url: Url) -> Result<String> {
-        let res = self.client.get(url).await?;
-        let body = res.text().await?;
-        Ok(body)
+    fn get_series_contents(&self, html: Html) {
+        // let div = html.select(
+        //     r#"
+        //     div[class="container"#,
+        // );
+        todo!()
     }
 }
 
 impl SeriesPipeline<Page, Episode> for Pipeline {
     async fn get_episode_urls(&self, url: Url) -> Result<Vec<Url>> {
+        let html = self.client.get_html(url).await?;
+
+        //
+
         todo!()
     }
 

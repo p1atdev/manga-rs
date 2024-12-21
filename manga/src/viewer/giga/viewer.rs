@@ -8,9 +8,12 @@ use scraper::{Html, Selector};
 use url::Url;
 
 use crate::auth::EmptyAuth;
+use crate::feed::{FeedContent, FeedParser};
 use crate::utils;
 use crate::viewer::giga::data::Episode;
 use crate::viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder, ViewerWebsite};
+
+use super::data::{Gtm, GtmEpisode};
 
 /// GigaViewer website family
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -193,6 +196,20 @@ impl ViewerClient<Config> for Client {
 }
 
 impl Client {
+    pub async fn get_html(&self, url: Url) -> Result<Html> {
+        let res = self.get(url).await?;
+        let html = Html::parse_document(&res.text().await?);
+        Ok(html)
+    }
+
+    pub async fn get_feed(&self, url: Url) -> Result<FeedContent> {
+        let res = self.get(url).await?;
+        let parser = FeedParser::new();
+        let feed = parser.parse(&res.text().await?)?;
+
+        Ok(feed)
+    }
+
     fn compose_episode_url(&self, episode_id: &str) -> Url {
         self.config
             .base_url
@@ -202,10 +219,13 @@ impl Client {
 
     /// Get episode
     pub async fn get_episode(&self, episode_id: &str) -> Result<Episode> {
-        self.get_episode_from_html(episode_id).await
+        let url = self.compose_episode_url(episode_id);
+        let res = self.get(url).await?;
+        let html = res.text().await?;
+        self.get_episode_from_html(&html).await
     }
 
-    fn extract_data_from_html(&self, html: &str) -> Result<String> {
+    fn extract_episode_json(&self, html: &str) -> Result<String> {
         let document = Html::parse_document(html);
         let selector = match Selector::parse("script#episode-json") {
             Ok(selector) => selector,
@@ -220,13 +240,52 @@ impl Client {
         Ok(json.to_string())
     }
 
-    async fn get_episode_from_html(&self, episode_id: &str) -> Result<Episode> {
+    async fn get_episode_from_html(&self, html: &str) -> Result<Episode> {
+        let json = self.extract_episode_json(&html)?;
+        let episode: Episode = serde_json::from_str(&json)?;
+        Ok(episode)
+    }
+
+    fn compose_series_atom_url(&self, series_id: &str) -> Url {
+        // https://shonenjumpplus.com/atom/series/9324103629152359675?free_only=1
+        self.config
+            .base_url
+            .join(&format!("/atom/series/{}", series_id))
+            .unwrap()
+    }
+
+    fn extract_data_gtm_data_layer(&self, html: &str) -> Result<String> {
+        let document = Html::parse_document(html);
+        let selector = match Selector::parse("html") {
+            Ok(selector) => selector,
+            Err(_) => bail!("Failed to parse selector"),
+        };
+        let gtm_data_layer = match document.select(&selector).next() {
+            Some(element) => Ok(element
+                .attr("data-gtm-data-layer")
+                .ok_or(anyhow!("Failed to extract data-gtm-data-layer"))?),
+            None => Err(anyhow!("Failed to find html")),
+        }?;
+
+        Ok(gtm_data_layer.to_string())
+    }
+
+    async fn get_gtm_data_from_html(&self, html: &str) -> Result<GtmEpisode> {
+        let gtm_data = self.extract_data_gtm_data_layer(&html)?;
+        let gtm_data: Gtm = serde_json::from_str(&gtm_data)?;
+        Ok(gtm_data.episode().clone())
+    }
+
+    pub async fn get_series_feed(&self, episode_id: &str) -> Result<FeedContent> {
+        // get series id from the episode's page
         let url = self.compose_episode_url(episode_id);
         let res = self.get(url).await?;
         let html = res.text().await?;
-        let json = self.extract_data_from_html(&html)?;
-        let episode: Episode = serde_json::from_str(&json)?;
-        Ok(episode)
+        let gtm = self.get_gtm_data_from_html(&html).await?;
+        let series_id = gtm.series_id();
+
+        let url = self.compose_series_atom_url(&series_id);
+        self.get_feed(url).await
     }
 }
 
@@ -252,6 +311,16 @@ mod test {
     };
 
     use super::*;
+
+    #[tokio::test]
+    async fn test_get_html() -> Result<()> {
+        let client = Client::new(ConfigBuilder::new(Website::ShonenJumpPlus).build());
+        let url = Url::parse("https://shonenjumpplus.com/episode/9324103658562874562")?;
+        let html = client.get_html(url).await?;
+        println!("{:?}", html);
+
+        Ok(())
+    }
 
     #[tokio::test]
     async fn test_get_episode() {
@@ -409,6 +478,26 @@ mod test {
             .buffer_unordered(num_cpus::get())
             .try_collect::<Vec<_>>()
             .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_series_feed() -> Result<()> {
+        let episode_id = "9324103625676410700";
+
+        let config = ConfigBuilder::new(Website::ShonenJumpPlus).build();
+        let client = Client::new(config);
+        let feed = client.get_series_feed(episode_id).await?;
+
+        match feed {
+            FeedContent::FeedRs(feed) => feed.entries.iter().for_each(|entry| {
+                assert!(entry.title.is_some());
+                entry.links.iter().for_each(|link| {
+                    assert!(link.href != "");
+                });
+            }),
+        }
 
         Ok(())
     }

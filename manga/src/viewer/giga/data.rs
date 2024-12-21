@@ -195,3 +195,59 @@ pub struct Series {
     id: String,
     title: String,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Gtm {
+    episode: GtmEpisode,
+}
+
+impl Gtm {
+    pub fn episode(&self) -> &GtmEpisode {
+        &self.episode
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GtmEpisode {
+    magazine_label: Option<serde_json::Value>,
+    episode_id: String,
+    magazine_label_id: Option<serde_json::Value>,
+    readable_product_id: String,
+    episode_title: String,
+    content_id: String,
+    series_id: String,
+    henshubu: Option<serde_json::Value>,
+    series_title: String,
+    series_ongoing: i64,
+    magazine_label_title: Option<serde_json::Value>,
+}
+
+impl GtmEpisode {
+    pub fn episode_id(&self) -> &str {
+        &self.episode_id
+    }
+
+    pub fn readable_product_id(&self) -> &str {
+        &self.readable_product_id
+    }
+
+    pub fn episode_title(&self) -> &str {
+        &self.episode_title
+    }
+
+    pub fn content_id(&self) -> &str {
+        &self.content_id
+    }
+
+    pub fn series_id(&self) -> &str {
+        &self.series_id
+    }
+
+    pub fn series_title(&self) -> &str {
+        &self.series_title
+    }
+
+    pub fn series_ongoing(&self) -> i64 {
+        self.series_ongoing
+    }
+}
