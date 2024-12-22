@@ -36,10 +36,17 @@ manga episode https://tonarinoyj.jp/episode/2550912964641693231 \
     --format webp
 ```
 
+```bash
+manga series https://shonenjumpplus.com/episode/17106371853091617526 \
+    --output-dir ./output \
+    --save-as raw \
+    --format webp
+```
+
 ## Supported Websites
 
 
-- [x] [ChojuGiga Viewer](https://hatena.co.jp/solutions/gigaviewer) family
+- [x] [ChojuGiga Viewer](https://hatena.co.jp/solutions/gigaviewer) family: Episode and Series download are supported
   - [Shonen Jump Plus](https://shonenjumpplus.com)
   - [Tonari no Young Jump](https://tonarinoyj.jp)
   - [Shonen Jump Magazine Pocket](https://pocket.shonenmagazine.com)
@@ -58,8 +65,8 @@ manga episode https://tonarinoyj.jp/episode/2550912964641693231 \
   - [Comic Ogyaaa](https://comic-ogyaaa.com)
   - [Comic Earthstar](https://comic-earthstar.com)
   - [Ourfeel](https://ourfeel.jp)
-- [x] [Comic FUZ](https://comic-fuz.com)
-- [ ] [Manga Library Z](https://www.mangaz.com)
+- [x] [Comic FUZ](https://comic-fuz.com): Episode download is supported
+- [ ] ~~[Manga Library Z](https://www.mangaz.com)~~ (Service has been discontinued)
 - [ ] [Ichijin Plus](https://ichijin-plus.com)
 - [ ] [Kadokomi (former ComicWalker)](https://comic-walker.com)
 - [ ] [Piccoma](https://piccoma.com)
