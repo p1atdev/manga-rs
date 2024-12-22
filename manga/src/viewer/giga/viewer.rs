@@ -189,18 +189,18 @@ impl ViewerClient<Config> for Client {
         }
         Err(self.map_error_status(res.status()))
     }
+}
 
+impl Client {
     /// Get episode id from the provided url.
     /// - https://example.com/episode/123456
     /// - https://example.com/episode/123456.json
-    fn parse_episode_id(&self, url: &Url) -> Option<String> {
+    pub fn parse_episode_id(&self, url: &Url) -> Option<String> {
         let path = url.path();
         let captures = EPISODE_PATH_PATTERN.captures(path)?;
         captures.get(1).map(|m| m.as_str().to_string())
     }
-}
 
-impl Client {
     async fn get_html(&self, url: Url) -> Result<Html, ClientError> {
         let res = self.get(url).await?;
         let html = Html::parse_document(&res.text().await.map_err(|_| ClientError::DecodeError)?);

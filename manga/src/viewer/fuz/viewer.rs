@@ -181,17 +181,17 @@ impl ViewerClient<Config> for Client {
         }
         Err(self.map_error_status(res.status()))
     }
+}
 
+impl Client {
     /// Parse episode id from url
     /// - https://comic-fuz.com/manga/viewer/36429
-    fn parse_episode_id(&self, url: &Url) -> Option<String> {
+    pub fn parse_episode_id(&self, url: &Url) -> Option<String> {
         let path = url.path();
         let captures = EPISODE_PATH_PATTERN.captures(path)?;
         captures.get(1).map(|m| m.as_str().to_string())
     }
-}
 
-impl Client {
     // API /v1/web_manga_viewer
     fn compose_v1_web_manga_viewer(&self) -> Url {
         self.config.api_url.join("/v1/web_manga_viewer").unwrap()

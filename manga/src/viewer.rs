@@ -65,9 +65,6 @@ pub trait ViewerClient<V: ViewerConfig> {
         self.fetch_raw::<reqwest::Body>(url, reqwest::Method::POST, Some(body.into()), headers)
     }
 
-    /// Parse episode id from url
-    fn parse_episode_id(&self, url: &Url) -> Option<String>;
-
     fn map_error_status(&self, status: StatusCode) -> ClientError {
         match status {
             StatusCode::NOT_FOUND => ClientError::HttpError(HttpError::PageNotFound),
