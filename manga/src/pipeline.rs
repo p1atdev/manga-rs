@@ -1,12 +1,13 @@
-use std::{future::Future, path::Path};
+use std::{future::Future, path::Path, sync::Arc};
 
 use anyhow::Result;
 use image::DynamicImage;
+use indicatif::ProgressBar;
 use url::Url;
 
 use crate::{
     data::{MangaEpisode, MangaPage},
-    error::ClientError,
+    error::{ClientError, PipelineError},
     io::{EpisodeWriter, FileWriter},
     progress::ProgressConfig,
     utils::Bytes,
@@ -144,19 +145,20 @@ impl EpisodeQueueItem {
 
 /// Pipeline to download multiple episodes
 pub trait SeriesPipeline<P: MangaPage, E: MangaEpisode<P>> {
-    fn get_episode_urls(&self, url: Url) -> impl Future<Output = Result<Vec<Url>>>;
+    fn get_episode_queue(&self, url: Url) -> impl Future<Output = Result<Vec<EpisodeQueueItem>>>;
 
     /// Download with a new folder or file in the specified directory
+    fn download_episode<T: AsRef<Path>>(
+        &self,
+        url: &Url,
+        path: &T,
+        progress: Arc<ProgressBar>,
+    ) -> impl Future<Output = Result<(), PipelineError>>;
+
+    /// Download multiple episodes specified by the urls
     fn download_series<T: AsRef<Path>>(
         &self,
         url: &Url,
-        dir: &T,
-    ) -> impl Future<Output = Result<()>>;
-
-    /// Download multiple episodes specified by the urls
-    fn download_episodes<T: AsRef<Path>>(
-        &self,
-        urls: Vec<Url>,
         dir: &T,
     ) -> impl Future<Output = Result<()>>;
 }

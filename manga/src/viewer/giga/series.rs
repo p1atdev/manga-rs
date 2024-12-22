@@ -1,5 +1,8 @@
 use anyhow::{bail, Context, Result};
-use futures::{stream, StreamExt, TryStreamExt};
+use futures::{
+    stream::{self, Iter},
+    StreamExt, TryStreamExt,
+};
 use indicatif::{MultiProgress, ProgressBar};
 
 use std::{
@@ -15,10 +18,29 @@ use crate::{
     pipeline::{EpisodePipeline, EpisodeQueueItem, SaveFormat, SeriesPipeline},
 };
 
-use super::pipeline::Pipeline;
+use super::{
+    data::{Episode, Page},
+    pipeline::Pipeline,
+};
 
-// SeriesPipeline<Page, Episode> for
 impl Pipeline {
+    fn get_save_path(&self, directory: PathBuf, filename: &str) -> PathBuf {
+        let mut path = directory.join(filename);
+        match self.writer_config.save_format() {
+            SaveFormat::Raw => {} // Do nothing
+            SaveFormat::Zip { extension, .. } => {
+                path.set_extension(extension.unwrap_or("zip".to_string()));
+            }
+            #[cfg(feature = "pdf")]
+            SaveFormat::Pdf => {
+                path.set_extension("pdf");
+            }
+        }
+        path
+    }
+}
+
+impl SeriesPipeline<Page, Episode> for Pipeline {
     async fn get_episode_queue(&self, url: Url) -> Result<Vec<EpisodeQueueItem>> {
         let series_id = self.client.get_series_id(url).await?;
         let feed = self.client.get_series_feed(&series_id).await?;
@@ -107,21 +129,6 @@ impl Pipeline {
         Ok(())
     }
 
-    fn get_save_path(&self, directory: PathBuf, filename: &str) -> PathBuf {
-        let mut path = directory.join(filename);
-        match self.writer_config.save_format() {
-            SaveFormat::Raw => {} // Do nothing
-            SaveFormat::Zip { extension, .. } => {
-                path.set_extension(extension.unwrap_or("zip".to_string()));
-            }
-            #[cfg(feature = "pdf")]
-            SaveFormat::Pdf => {
-                path.set_extension("pdf");
-            }
-        }
-        path
-    }
-
     async fn download_series<T: AsRef<Path>>(&self, url: &Url, dir: &T) -> Result<()> {
         let queue = self.get_episode_queue(url.clone()).await?;
         let multibar = MultiProgress::new();
@@ -167,10 +174,6 @@ impl Pipeline {
             .await?;
 
         Ok(())
-    }
-
-    async fn download_episodes<T: AsRef<Path>>(&self, urls: Vec<Url>, dir: &T) -> Result<()> {
-        todo!()
     }
 }
 
