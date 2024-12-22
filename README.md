@@ -36,6 +36,8 @@ manga episode https://tonarinoyj.jp/episode/2550912964641693231 \
     --format webp
 ```
 
+- download available multiple episodes as image files
+
 ```bash
 manga series https://shonenjumpplus.com/episode/17106371853091617526 \
     --output-dir ./output \
