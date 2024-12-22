@@ -9,10 +9,13 @@ pub mod mangaz;
 use std::future::Future;
 
 use anyhow::Result;
-use reqwest::{header::HeaderMap, Response};
+use reqwest::{header::HeaderMap, IntoUrl, Response, StatusCode};
 use url::Url;
 
-use crate::auth::Auth;
+use crate::{
+    auth::Auth,
+    error::{ClientError, HttpError},
+};
 
 /// Manga viewer enum
 pub enum ViewerType {
@@ -23,7 +26,7 @@ pub enum ViewerType {
 }
 
 pub trait ViewerConfig {
-    fn create_header(&self) -> Result<HeaderMap>;
+    fn create_header(&self) -> Result<HeaderMap, ClientError>;
 }
 
 pub trait ViewerConfigBuilder<V: ViewerConfig, A: Auth> {
@@ -42,10 +45,13 @@ pub trait ViewerClient<V: ViewerConfig> {
         method: reqwest::Method,
         body: Option<B>,
         headers: Option<HeaderMap>,
-    ) -> impl Future<Output = Result<Response>> + Send;
+    ) -> impl Future<Output = Result<Response, ClientError>> + Send;
 
     /// simple GET request
-    fn get(&self, url: Url) -> impl std::future::Future<Output = Result<Response>> + Send {
+    fn get(
+        &self,
+        url: Url,
+    ) -> impl std::future::Future<Output = Result<Response, ClientError>> + Send {
         self.fetch_raw::<reqwest::Body>(url, reqwest::Method::GET, None, None)
     }
 
@@ -55,12 +61,28 @@ pub trait ViewerClient<V: ViewerConfig> {
         url: Url,
         body: B,
         headers: Option<HeaderMap>,
-    ) -> impl std::future::Future<Output = Result<Response>> + Send {
+    ) -> impl std::future::Future<Output = Result<Response, ClientError>> + Send {
         self.fetch_raw::<reqwest::Body>(url, reqwest::Method::POST, Some(body.into()), headers)
     }
 
     /// Parse episode id from url
     fn parse_episode_id(&self, url: &Url) -> Option<String>;
+
+    fn map_error_status(&self, status: StatusCode) -> ClientError {
+        match status {
+            StatusCode::NOT_FOUND => ClientError::HttpError(HttpError::PageNotFound),
+            StatusCode::TOO_MANY_REQUESTS => ClientError::HttpError(HttpError::TooManyRequests),
+            StatusCode::INTERNAL_SERVER_ERROR => {
+                ClientError::HttpError(HttpError::InternalServerError)
+            }
+            StatusCode::BAD_REQUEST => ClientError::HttpError(HttpError::BadRequest),
+            StatusCode::UNAUTHORIZED => ClientError::HttpError(HttpError::Unauthorized),
+            StatusCode::FORBIDDEN => ClientError::HttpError(HttpError::Forbidden),
+            _ => ClientError::HttpError(HttpError::Unknown(
+                status.canonical_reason().unwrap_or("").to_string(),
+            )),
+        }
+    }
 }
 
 pub trait ViewerWebsite<T> {

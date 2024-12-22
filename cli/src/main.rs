@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use manga::pipeline::{EpisodePipeline, EpisodePipelineBuilder, WriterConifg};
+use manga::pipeline::{EpisodePipeline, EpisodePipelineBuilder, SeriesPipeline, WriterConifg};
 use manga::viewer::fuz::{self, pipeline::Pipeline as FuzPipeline};
 use manga::viewer::giga::{self, pipeline::Pipeline as GigaPipeline};
 use manga::{progress::ProgressConfig, viewer::ViewerWebsite};
@@ -10,11 +10,11 @@ use url::Url;
 #[derive(Debug, Clone, Parser)]
 struct Cli {
     #[command(subcommand)]
-    command: Source,
+    command: Target,
 }
 
 #[derive(Debug, Clone, Subcommand)]
-enum Source {
+enum Target {
     Episode {
         /// Episode URL of the manga
         url: Url,
@@ -30,6 +30,23 @@ enum Source {
 
         /// Image format
         #[arg(short, long, default_value = "png")]
+        format: ImageFormat,
+    },
+    Series {
+        /// Series URL of the manga
+        url: Url,
+
+        /// Output directory.
+        /// New directory or file will be created in this directory.
+        #[arg(short, long)]
+        output_dir: String,
+
+        /// Save as
+        #[arg(short, long, default_value = "raw")]
+        save_as: SaveFormat,
+
+        /// Image format
+        #[arg(short, long, default_value = "webp")]
         format: ImageFormat,
     },
 }
@@ -82,7 +99,7 @@ async fn main() -> Result<()> {
     let progress = ProgressConfig::default();
 
     match cli.command {
-        Source::Episode {
+        Target::Episode {
             url,
             output_dir,
             save_as,
@@ -111,6 +128,42 @@ async fn main() -> Result<()> {
                     .set_writer_config(WriterConifg::new(save_format, image_format));
 
                 pipe.download_in(&url, &output_dir).await?;
+
+                return Ok(());
+            }
+
+            bail!("Website not supported: {}", host);
+        }
+        Target::Series {
+            url,
+            output_dir,
+            save_as,
+            format,
+        } => {
+            let host = url.host_str().context("Url must have host")?;
+
+            let save_format = get_save_format(save_as);
+            let image_format = get_image_format(format);
+
+            if let Some(website) = giga::viewer::Website::lookup(host) {
+                let pipe = GigaPipeline::default()
+                    .set_website(website)
+                    .set_progress(progress)
+                    .set_writer_config(WriterConifg::new(save_format, image_format));
+
+                pipe.download_series(&url, &output_dir).await?;
+
+                return Ok(());
+            }
+
+            if let Some(website) = fuz::viewer::Website::lookup(host) {
+                let pipe = FuzPipeline::default()
+                    .set_website(website)
+                    .set_progress(progress)
+                    .set_writer_config(WriterConifg::new(save_format, image_format));
+
+                // pipe.download_series(&url, &output_dir).await?;
+                todo!();
 
                 return Ok(());
             }

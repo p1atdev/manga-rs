@@ -1,5 +1,7 @@
 pub mod auth;
 pub mod data;
+pub mod error;
+pub(crate) mod feed;
 pub mod io;
 pub mod parser;
 pub mod pipeline;

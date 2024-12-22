@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use anyhow::{bail, Context, Ok, Result};
+use anyhow::{bail, Context, Result};
 use futures::{stream, StreamExt, TryStreamExt};
 use image::DynamicImage;
 use url::Url;
@@ -9,6 +9,7 @@ use url::Url;
 use crate::io::pdf::PdfWriter;
 use crate::{
     data::{MangaEpisode, MangaPage},
+    error::ClientError,
     io::FileWriter,
     pipeline::{EpisodePipeline, EpisodePipelineBuilder, SaveFormat, WriterConifg},
     progress::ProgressConfig,
@@ -107,14 +108,17 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
             .context("Failed to parse episode id")
     }
 
-    async fn fetch_episode(&self, episode_id: &str) -> Result<Episode> {
+    async fn fetch_episode(&self, episode_id: &str) -> Result<Episode, ClientError> {
         self.client.get_episode(episode_id).await
     }
 
-    async fn fetch_image(&self, page: &Page) -> Result<Bytes> {
-        let url = self.client.image_url(page.image_path()?)?;
+    async fn fetch_image(&self, page: &Page) -> Result<Bytes, ClientError> {
+        let url = self
+            .client
+            .image_url(page.image_path().map_err(|_| ClientError::InvalidPage)?)
+            .map_err(|_| ClientError::InvalidUrl)?;
         let res = self.client.get(url).await?;
-        let bytes = res.bytes().await?;
+        let bytes = res.bytes().await.map_err(|_| ClientError::DecodeError)?;
 
         Ok(bytes.into())
     }
@@ -184,11 +188,13 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
             .try_buffer_unordered(self.num_threads)
             .map_ok(|_| {
                 progress.inc(1);
-                async move { Ok(()) }
+                async move { anyhow::Ok(()) }
             })
             .try_buffered(self.num_threads)
             .try_collect::<Vec<_>>()
             .await?;
+
+        progress.finish();
 
         Ok(())
     }
@@ -245,11 +251,13 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
             .try_buffer_unordered(self.num_threads)
             .map_ok(|_| {
                 progress.inc(1);
-                async move { Ok(()) }
+                async move { anyhow::Ok(()) }
             })
             .try_buffered(self.num_threads)
             .try_collect::<Vec<_>>()
             .await?;
+
+        progress.finish();
 
         Ok(())
     }

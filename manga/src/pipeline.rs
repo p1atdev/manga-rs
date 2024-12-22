@@ -1,11 +1,13 @@
-use std::{future::Future, path::Path};
+use std::{future::Future, path::Path, sync::Arc};
 
 use anyhow::Result;
 use image::DynamicImage;
+use indicatif::ProgressBar;
 use url::Url;
 
 use crate::{
     data::{MangaEpisode, MangaPage},
+    error::{ClientError, PipelineError},
     io::{EpisodeWriter, FileWriter},
     progress::ProgressConfig,
     utils::Bytes,
@@ -63,10 +65,13 @@ pub trait EpisodePipeline<P: MangaPage, E: MangaEpisode<P>> {
     fn parse_episode_id(&self, url: &Url) -> Result<String>;
 
     /// Fetch the Episode
-    fn fetch_episode(&self, episode_id: &str) -> impl Future<Output = Result<E>> + Send;
+    fn fetch_episode(
+        &self,
+        episode_id: &str,
+    ) -> impl Future<Output = Result<E, ClientError>> + Send;
 
     /// Fetch an image
-    fn fetch_image(&self, page: &P) -> impl Future<Output = Result<Bytes>> + Send;
+    fn fetch_image(&self, page: &P) -> impl Future<Output = Result<Bytes, ClientError>> + Send;
 
     /// Solve the obfuscation
     fn solve_image_bytes(
@@ -113,4 +118,47 @@ pub trait EpisodePipeline<P: MangaPage, E: MangaEpisode<P>> {
 
     /// Download with a new folder or file in the specified directory
     fn download_in<T: AsRef<Path>>(&self, url: &Url, dir: &T) -> impl Future<Output = Result<()>>;
+}
+
+#[derive(Clone, Debug)]
+pub struct EpisodeQueueItem {
+    title: String,
+    url: Url,
+}
+
+impl EpisodeQueueItem {
+    pub fn new(title: &str, url: Url) -> Self {
+        EpisodeQueueItem {
+            title: title.to_string(),
+            url,
+        }
+    }
+
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    pub fn url(&self) -> &Url {
+        &self.url
+    }
+}
+
+/// Pipeline to download multiple episodes
+pub trait SeriesPipeline<P: MangaPage, E: MangaEpisode<P>> {
+    fn get_episode_queue(&self, url: Url) -> impl Future<Output = Result<Vec<EpisodeQueueItem>>>;
+
+    /// Download with a new folder or file in the specified directory
+    fn download_episode<T: AsRef<Path>>(
+        &self,
+        url: &Url,
+        path: &T,
+        progress: Arc<ProgressBar>,
+    ) -> impl Future<Output = Result<(), PipelineError>>;
+
+    /// Download multiple episodes specified by the urls
+    fn download_series<T: AsRef<Path>>(
+        &self,
+        url: &Url,
+        dir: &T,
+    ) -> impl Future<Output = Result<()>>;
 }

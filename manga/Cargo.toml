@@ -11,7 +11,7 @@ path = "src/lib.rs"
 [features]
 default = ["giga", "fuz"]
 
-giga = ["rss"]
+giga = ["feed-rs"]
 fuz = ["prost", "prost-build", "aes", "hex", "cbc", "cipher"]
 pdf = ["pdf-writer", "flate2"]
 
@@ -40,7 +40,7 @@ pdf-writer = { version = "0.12.0", optional = true }
 flate2 = { version = "1.0.35", optional = true }
 
 # giga
-rss = { version = "2.0.11", optional = true }
+feed-rs = { version = "2.3.0", optional = true }
 
 # fuz
 prost = { version = "0.13.4", optional = true }
@@ -48,6 +48,7 @@ aes = { version = "0.8.4", optional = true }
 hex = { version = "0.4.3", optional = true }
 cbc = { version = "0.1.2", optional = true }
 cipher = { version = "0.4.4", features = ["block-padding"], optional = true }
+thiserror = "2.0.8"
 
 [build-dependencies]
 prost-build = { version = "0.13.4", optional = true }
