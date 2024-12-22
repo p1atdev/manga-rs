@@ -194,6 +194,8 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
             .try_collect::<Vec<_>>()
             .await?;
 
+        progress.finish();
+
         Ok(())
     }
 
@@ -254,6 +256,8 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
             .try_buffered(self.num_threads)
             .try_collect::<Vec<_>>()
             .await?;
+
+        progress.finish();
 
         Ok(())
     }
