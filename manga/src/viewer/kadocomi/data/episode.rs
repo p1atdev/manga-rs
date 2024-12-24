@@ -27,7 +27,7 @@ pub struct Episode {
 #[serde(rename_all = "camelCase")]
 pub struct Page {
     drm_mode: DrmMode,
-    drm_hash: String,
+    drm_hash: String, // xor key
     drm_image_url: String,
     page: i64,
     width: i64,

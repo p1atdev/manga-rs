@@ -1,12 +1,16 @@
+use anyhow::Result;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use reqwest::header::{self, HeaderName, HeaderValue};
 
 /// Auth trait
 pub trait Auth {
-    /// create header value
-    fn create_header(&self) -> String;
+    /// create header key
+    fn get_header_key() -> HeaderName {
+        header::AUTHORIZATION
+    }
 
-    /// get header value
-    fn get_header_value(&self) -> String;
+    /// create header value
+    fn get_header_value(&self) -> Result<HeaderValue>;
 }
 
 /// Basic auth
@@ -27,16 +31,17 @@ impl BasicAuth {
 }
 
 impl Auth for BasicAuth {
-    fn create_header(&self) -> String {
-        format!(
+    fn get_header_value(&self) -> Result<HeaderValue> {
+        let value = format!(
             "Basic {}",
             STANDARD.encode(&format!("{}:{}", self.username, self.password))
-        )
+        );
+        Ok(HeaderValue::from_str(&value)?)
     }
 
-    fn get_header_value(&self) -> String {
-        format!("{}:{}", self.username, self.password)
-    }
+    // fn get_header_value(&self) -> String {
+    //     format!("{}:{}", self.username, self.password)
+    // }
 }
 
 /// Bearer auth
@@ -55,13 +60,14 @@ impl BearerAuth {
 }
 
 impl Auth for BearerAuth {
-    fn create_header(&self) -> String {
-        format!("Bearer {}", self.token)
+    fn get_header_value(&self) -> Result<HeaderValue> {
+        let value = format!("Bearer {}", self.token);
+        Ok(HeaderValue::from_str(&value)?)
     }
 
-    fn get_header_value(&self) -> String {
-        self.token.clone()
-    }
+    // fn get_header_value(&self) -> String {
+    //     self.token.clone()
+    // }
 }
 
 /// Empty auth. do nothing
@@ -69,11 +75,11 @@ impl Auth for BearerAuth {
 pub struct EmptyAuth {}
 
 impl Auth for EmptyAuth {
-    fn create_header(&self) -> String {
-        "".to_string()
+    fn get_header_value(&self) -> Result<HeaderValue> {
+        Ok(HeaderValue::from_str("")?)
     }
 
-    fn get_header_value(&self) -> String {
-        "".to_string()
-    }
+    // fn get_header_value(&self) -> String {
+    //     "".to_string()
+    // }
 }

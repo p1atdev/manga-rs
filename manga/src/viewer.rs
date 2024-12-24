@@ -2,6 +2,7 @@
 pub mod fuz;
 
 pub mod giga;
+pub mod ichijin;
 pub mod kadocomi;
 #[deprecated]
 pub mod mangaz;
