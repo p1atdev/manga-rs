@@ -225,7 +225,8 @@ mod test {
         let url = Url::parse("https://comic-walker.com/detail/KC_000735_S?episodeType=first")?;
         let path = "tests/output/kadocomi_pipe_raw";
 
-        let pipe = Pipeline::default();
+        let pipe = Pipeline::default()
+            .set_writer_config(WriterConifg::new(SaveFormat::Raw, image::ImageFormat::WebP));
 
         pipe.download(&url, &path).await?;
 
