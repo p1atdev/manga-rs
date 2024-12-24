@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct EpisodeNextData {
     props: Props,
     page: String,
-    query: EpisodeNextDataQuery,
+    query: NextDataQuery,
     build_id: String,
     is_fallback: bool,
     is_experimental_compile: bool,
@@ -66,12 +66,12 @@ pub struct PageProps {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DehydratedState {
     mutations: Vec<Option<serde_json::Value>>,
-    queries: Vec<QueryElement>,
+    queries: Vec<EpisodeNextDataQuery>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct QueryElement {
+pub struct EpisodeNextDataQuery {
     state: State,
     query_key: Vec<QueryKeyElement>,
     query_hash: String,
@@ -80,8 +80,8 @@ pub struct QueryElement {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum QueryKeyElement {
+    UrlPath(String),
     QueryKeyClass(QueryKeyClass),
-    String(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -89,7 +89,7 @@ pub enum QueryKeyElement {
 pub struct QueryKeyClass {
     work_code: Option<String>,
     label_id: Option<String>,
-    episode_code: Option<serde_json::Value>,
+    episode_code: Option<String>,
     episode_type: Option<String>,
     latest_episode_id: Option<String>,
 }
@@ -115,17 +115,16 @@ pub struct State {
 #[serde(rename_all = "camelCase")]
 pub struct Data {
     work: Option<Work>,
-    first_comic: Option<FirstComic>,
-    latest_comic: Option<FirstComic>,
-    first_episodes: Option<StEpisodes>,
-    latest_episodes: Option<StEpisodes>,
+    first_comic: Option<EdgeComic>,
+    latest_comic: Option<EdgeComic>,
+    first_episodes: Option<Comics>,
+    latest_episodes: Option<Comics>,
     comics: Option<Comics>,
     promotions: Option<Vec<Option<serde_json::Value>>>,
     related_books: Option<RelatedBooks>,
     label: Option<Label>,
     labels: Option<Vec<Label>>,
     label_works: Option<Vec<LabelWork>>,
-    latest_episode_id: Option<String>,
     follower_count: Option<i64>,
     episode: Option<DataEpisode>,
 }
@@ -133,16 +132,16 @@ pub struct Data {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Comics {
     total: i64,
-    result: Vec<FirstComic>,
+    result: Vec<EdgeComic>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FirstComic {
+pub struct EdgeComic {
     id: String,
     title: String,
     thumbnail: String,
-    release: String,
-    episodes: Vec<EpisodeElement>,
+    release: Option<String>,
+    episodes: Option<Vec<EpisodeElement>>,
     stores: Vec<Store>,
 }
 
@@ -153,17 +152,15 @@ pub struct EpisodeElement {
     code: String,
     title: String,
     sub_title: String,
-    thumbnail: String,
-    original_thumbnail: String,
     update_date: String,
     delivery_period: String,
     is_new: bool,
     has_read: bool,
-    stores: Vec<Option<serde_json::Value>>,
-    service_id: ServiceId,
+    stores: Vec<Option<Store>>,
+    service_id: String,
     internal: EpisodeInternal,
     #[serde(rename = "type")]
-    element_type: String,
+    episode_type: String,
     is_active: bool,
 }
 
@@ -172,45 +169,16 @@ pub struct EpisodeElement {
 pub struct EpisodeInternal {
     episode_no: i64,
     page_count: i64,
-    #[serde(rename = "episodetype")]
-    episode_type: String,
+    episodetype: String,
     is_latest: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ServiceId {
-    Web,
-    #[serde(rename = "web_trial")]
-    WebTrial,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Store {
-    code: Code,
-    name: Name,
+    code: String,
+    name: String,
     url: String,
     image: Image,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Code {
-    Amazon,
-    #[serde(rename = "book_live")]
-    BookLive,
-    #[serde(rename = "book_walker")]
-    BookWalker,
-    #[serde(rename = "comic_cmoa")]
-    ComicCmoa,
-    #[serde(rename = "ebook_japan")]
-    EbookJapan,
-    Honto,
-    #[serde(rename = "line_manga")]
-    LineManga,
-    Mechacomic,
-    Piccoma,
-    Renta,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -226,46 +194,15 @@ pub struct Image {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Name {
-    #[serde(rename = "Amazon")]
-    Amazon,
-    #[serde(rename = "BookLive!")]
-    BookLive,
-    #[serde(rename = "BOOK☆WALKER")]
-    BookWalker,
-    Ebookjapan,
-    #[serde(rename = "コミックシーモア")]
-    Cmoa,
-    Honto,
-    #[serde(rename = "LINEマンガ")]
-    LineManga,
-    #[serde(rename = "めちゃコミック")]
-    Mechacomic,
-    #[serde(rename = "ピッコマ")]
-    Piccoma,
-    #[serde(rename = "Renta!")]
-    Renta,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DataEpisode {
     id: String,
     code: String,
     title: String,
-    service_id: ServiceId,
-    thumbnail: String,
+    service_id: String,
     internal: EpisodeInternal,
     update_date: String,
     is_active: bool,
-    original_thumbnail: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct StEpisodes {
-    total: i64,
-    result: Vec<EpisodeElement>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -288,6 +225,7 @@ pub struct LabelWork {
     id: String,
     thumbnail: String,
     original_thumbnail: String,
+    book_cover: Option<String>,
     title: String,
     is_original: bool,
     language: String,
@@ -296,13 +234,12 @@ pub struct LabelWork {
     internal: LabelWorkInternal,
     is_new: bool,
     episode: LabelWorkEpisode,
-    book_cover: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LabelWorkEpisode {
     #[serde(rename = "type")]
-    start_type: String,
+    episode_type: String,
     code: String,
     title: String,
 }
@@ -317,15 +254,7 @@ pub struct LabelWorkInternal {
 #[serde(rename_all = "camelCase")]
 pub struct RelatedBooks {
     total_count: i64,
-    resources: Vec<Resource>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Resource {
-    id: String,
-    title: String,
-    thumbnail: String,
-    stores: Vec<Store>,
+    resources: Vec<Option<serde_json::Value>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -341,7 +270,7 @@ pub struct Work {
     label_info: Label,
     language: String,
     serialization_status: String,
-    service_ids: Vec<ServiceId>,
+    service_ids: Vec<String>,
     internal: WorkInternal,
     summary: String,
     genre: Genre,
@@ -350,7 +279,6 @@ pub struct Work {
     authors: Vec<Author>,
     follower_count: i64,
     is_new: bool,
-    next_update_date_text: String,
     is_one_shot: bool,
     rating_level: String,
     free_campaigns: FreeCampaigns,
@@ -398,7 +326,29 @@ pub struct Metadata {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EpisodeNextDataQuery {
-    episode_type: Option<String>,
+pub struct NextDataQuery {
     work_code: String,
 }
+
+// #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+// #[serde(rename_all = "snake_case")]
+// pub enum Name {
+//     #[serde(rename = "Amazon")]
+//     Amazon,
+//     #[serde(rename = "BookLive!")]
+//     BookLive,
+//     #[serde(rename = "BOOK☆WALKER")]
+//     BookWalker,
+//     Ebookjapan,
+//     #[serde(rename = "コミックシーモア")]
+//     Cmoa,
+//     Honto,
+//     #[serde(rename = "LINEマンガ")]
+//     LineManga,
+//     #[serde(rename = "めちゃコミック")]
+//     Mechacomic,
+//     #[serde(rename = "ピッコマ")]
+//     Piccoma,
+//     #[serde(rename = "Renta!")]
+//     Renta,
+// }

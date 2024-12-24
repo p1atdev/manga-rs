@@ -2,6 +2,7 @@ use anyhow::{bail, Context, Result};
 use manga::pipeline::{EpisodePipeline, EpisodePipelineBuilder, SeriesPipeline, WriterConifg};
 use manga::viewer::fuz::{self, pipeline::Pipeline as FuzPipeline};
 use manga::viewer::giga::{self, pipeline::Pipeline as GigaPipeline};
+use manga::viewer::kadocomi;
 use manga::{progress::ProgressConfig, viewer::ViewerWebsite};
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -132,6 +133,17 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
 
+            if let Some(website) = kadocomi::viewer::Website::lookup(host) {
+                let pipe = kadocomi::pipeline::Pipeline::default()
+                    .set_website(website)
+                    .set_progress(progress)
+                    .set_writer_config(WriterConifg::new(save_format, image_format));
+
+                pipe.download_in(&url, &output_dir).await?;
+
+                return Ok(());
+            }
+
             bail!("Website not supported: {}", host);
         }
         Target::Series {
@@ -158,6 +170,18 @@ async fn main() -> Result<()> {
 
             if let Some(website) = fuz::viewer::Website::lookup(host) {
                 let pipe = FuzPipeline::default()
+                    .set_website(website)
+                    .set_progress(progress)
+                    .set_writer_config(WriterConifg::new(save_format, image_format));
+
+                // pipe.download_series(&url, &output_dir).await?;
+                todo!();
+
+                return Ok(());
+            }
+
+            if let Some(website) = kadocomi::viewer::Website::lookup(host) {
+                let pipe = kadocomi::pipeline::Pipeline::default()
                     .set_website(website)
                     .set_progress(progress)
                     .set_writer_config(WriterConifg::new(save_format, image_format));
