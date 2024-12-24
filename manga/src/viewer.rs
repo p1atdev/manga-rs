@@ -9,7 +9,7 @@ pub mod mangaz;
 use std::future::Future;
 
 use anyhow::Result;
-use reqwest::{header::HeaderMap, IntoUrl, Response, StatusCode};
+use reqwest::{header::HeaderMap, Response, StatusCode};
 use url::Url;
 
 use crate::{
@@ -76,7 +76,10 @@ pub trait ViewerClient<V: ViewerConfig> {
             StatusCode::UNAUTHORIZED => ClientError::HttpError(HttpError::Unauthorized),
             StatusCode::FORBIDDEN => ClientError::HttpError(HttpError::Forbidden),
             _ => ClientError::HttpError(HttpError::Unknown(
-                status.canonical_reason().unwrap_or("").to_string(),
+                status
+                    .canonical_reason()
+                    .unwrap_or(&status.to_string())
+                    .to_string(),
             )),
         }
     }

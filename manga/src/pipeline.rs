@@ -62,8 +62,6 @@ pub trait EpisodePipelineBuilder<W, A: MangaPage, B: MangaEpisode<A>, P: Episode
 
 /// Pipeline to download manga
 pub trait EpisodePipeline<P: MangaPage, E: MangaEpisode<P>> {
-    fn parse_episode_id(&self, url: &Url) -> Result<String>;
-
     /// Fetch the Episode
     fn fetch_episode(
         &self,

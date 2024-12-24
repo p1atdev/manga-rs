@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -11,6 +12,36 @@ pub struct EpisodeNextData {
     is_experimental_compile: bool,
     gssp: bool,
     script_loader: Vec<Option<serde_json::Value>>,
+}
+
+impl EpisodeNextData {
+    pub fn episode(&self) -> Result<DataEpisode> {
+        let episode = self
+            .props
+            .page_props
+            .dehydrated_state
+            .queries
+            .iter()
+            .find_map(|query| query.state.data.episode.clone())
+            .context("Episode not found")?;
+        Ok(episode)
+    }
+
+    pub fn series_id(&self) -> String {
+        self.props.page_props.work_code.clone()
+    }
+
+    pub fn series_title(&self) -> String {
+        self.props.page_props.metadata.title.clone()
+    }
+
+    pub fn episode_id(&self) -> Result<String> {
+        Ok(self.episode()?.id)
+    }
+
+    pub fn episode_title(&self) -> Result<String> {
+        Ok(self.episode()?.title)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

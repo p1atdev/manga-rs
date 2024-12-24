@@ -24,7 +24,7 @@ use super::{
     viewer::{Client, ConfigBuilder, Website},
 };
 
-/// Pipeline for downloading an episode of ChojuGiga manga
+/// Pipeline for downloading an episode of Comic Fux manga
 #[derive(Debug, Clone)]
 pub struct Pipeline {
     client: Client,
@@ -32,7 +32,6 @@ pub struct Pipeline {
     writer_config: WriterConifg,
     num_threads: usize,
     num_connections: usize,
-    // file_writer: Arc<FileWriter>,
 }
 
 impl Default for Pipeline {
@@ -41,10 +40,9 @@ impl Default for Pipeline {
         Self {
             client: Client::new(ConfigBuilder::new(Website::ComicFuz).build()),
             progress: ProgressConfig::default(),
+            writer_config,
             num_threads: num_cpus::get(),
             num_connections: 8,
-            // file_writer: Arc::new(FileWriter::new(&writer_config, &"./").unwrap()),
-            writer_config, // must be after file_writer
         }
     }
 }
@@ -102,12 +100,6 @@ impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for Pipeline {
 }
 
 impl EpisodePipeline<Page, Episode> for Pipeline {
-    fn parse_episode_id(&self, url: &Url) -> Result<String> {
-        self.client
-            .parse_episode_id(url)
-            .context("Failed to parse episode id")
-    }
-
     async fn fetch_episode(&self, episode_id: &str) -> Result<Episode, ClientError> {
         self.client.get_episode(episode_id).await
     }
@@ -155,7 +147,10 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
     }
 
     async fn download<T: AsRef<Path>>(&self, url: &Url, path: &T) -> Result<()> {
-        let episode_id = self.parse_episode_id(url)?;
+        let episode_id = self
+            .client
+            .parse_episode_id(url)
+            .context("Failed to parse episode id")?;
         let episode = self.fetch_episode(&episode_id).await?;
         let pages = episode
             .pages()
@@ -175,9 +170,9 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
 
         stream::iter(pages)
             .enumerate()
-            .map(|(i, page)| async move { Ok((i, page.clone(), self.fetch_image(&page).await?)) })
+            .map(|(i, page)| async move { Ok((i, self.fetch_image(&page).await?, page)) })
             .buffer_unordered(self.num_connections)
-            .map_ok(|(i, page, image)| async move {
+            .map_ok(|(i, image, page)| async move {
                 Ok((i, self.solve_image(image, Some(page)).await?))
             })
             .try_buffer_unordered(self.num_threads)
@@ -200,7 +195,10 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
     }
 
     async fn download_in<T: AsRef<Path>>(&self, url: &Url, dir: &T) -> Result<()> {
-        let episode_id = self.parse_episode_id(url)?;
+        let episode_id = self
+            .client
+            .parse_episode_id(url)
+            .context("Failed to parse episode id")?;
         let episode = self.fetch_episode(&episode_id).await?;
 
         let mut path = dir.as_ref().join(
@@ -238,9 +236,9 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
 
         stream::iter(pages)
             .enumerate()
-            .map(|(i, page)| async move { Ok((i, page.clone(), self.fetch_image(&page).await?)) })
+            .map(|(i, page)| async move { Ok((i, self.fetch_image(&page).await?, page)) })
             .buffer_unordered(self.num_connections)
-            .map_ok(|(i, page, image)| async move {
+            .map_ok(|(i, image, page)| async move {
                 Ok((i, self.solve_image(image, Some(page)).await?))
             })
             .try_buffer_unordered(self.num_threads)
