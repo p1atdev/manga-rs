@@ -166,7 +166,9 @@ impl ViewerClient<Config> for Client {
         }
         Err(self.map_error_status(res.status()))
     }
+}
 
+impl Client {
     /// Parse episode id from url
     fn parse_episode_id(&self, url: &Url) -> Option<String> {
         let path = url.path();
@@ -174,9 +176,7 @@ impl ViewerClient<Config> for Client {
         // 1: prefix, 2: episode id, 3: page index
         captures.get(2).map(|m| m.as_str().to_string())
     }
-}
 
-impl Client {
     fn compose_episode_url(&self, episode_id: &str) -> Url {
         let url = self
             .config

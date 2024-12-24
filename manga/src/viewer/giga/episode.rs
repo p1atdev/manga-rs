@@ -57,12 +57,6 @@ impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for Pipeline {
 }
 
 impl EpisodePipeline<Page, Episode> for Pipeline {
-    fn parse_episode_id(&self, url: &Url) -> Result<String> {
-        self.client
-            .parse_episode_id(url)
-            .context("Failed to parse episode id")
-    }
-
     async fn fetch_episode(&self, episode_id: &str) -> Result<Episode, ClientError> {
         self.client.get_episode(episode_id).await
     }
@@ -101,7 +95,10 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
 
     /// Download an episode to the specified path
     async fn download<P: AsRef<Path>>(&self, url: &Url, path: &P) -> Result<()> {
-        let episode_id = self.parse_episode_id(url)?;
+        let episode_id = self
+            .client
+            .parse_episode_id(url)
+            .context("Failed to parse episode id")?;
         let episode = self.fetch_episode(&episode_id).await?;
         let writer = self.file_writer(&path)?;
         writer.prepare().await?;
@@ -141,7 +138,10 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
 
     /// Download an episode into the specified directory
     async fn download_in<T: AsRef<Path>>(&self, url: &Url, dir: &T) -> Result<()> {
-        let episode_id = self.parse_episode_id(url)?;
+        let episode_id = self
+            .client
+            .parse_episode_id(url)
+            .context("Failed to parse episode id")?;
         let episode = self.fetch_episode(&episode_id).await?;
 
         let mut path = dir

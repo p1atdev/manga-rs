@@ -1,6 +1,6 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use futures::{
-    stream::{self, Iter},
+    stream::{self},
     StreamExt, TryStreamExt,
 };
 use indicatif::{MultiProgress, ProgressBar};
@@ -81,7 +81,9 @@ impl SeriesPipeline<Page, Episode> for Pipeline {
         progress: Arc<ProgressBar>,
     ) -> Result<(), PipelineError> {
         let episode_id = self
+            .client
             .parse_episode_id(url)
+            .context("Failed to parse episode id")
             .map_err(|_| PipelineError::Unknown)?;
         let episode = self.fetch_episode(&episode_id).await?;
 

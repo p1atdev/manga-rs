@@ -9,7 +9,7 @@ pub mod mangaz;
 use std::future::Future;
 
 use anyhow::Result;
-use reqwest::{header::HeaderMap, IntoUrl, Response, StatusCode};
+use reqwest::{header::HeaderMap, Response, StatusCode};
 use url::Url;
 
 use crate::{
@@ -65,9 +65,6 @@ pub trait ViewerClient<V: ViewerConfig> {
         self.fetch_raw::<reqwest::Body>(url, reqwest::Method::POST, Some(body.into()), headers)
     }
 
-    /// Parse episode id from url
-    fn parse_episode_id(&self, url: &Url) -> Option<String>;
-
     fn map_error_status(&self, status: StatusCode) -> ClientError {
         match status {
             StatusCode::NOT_FOUND => ClientError::HttpError(HttpError::PageNotFound),
@@ -79,7 +76,10 @@ pub trait ViewerClient<V: ViewerConfig> {
             StatusCode::UNAUTHORIZED => ClientError::HttpError(HttpError::Unauthorized),
             StatusCode::FORBIDDEN => ClientError::HttpError(HttpError::Forbidden),
             _ => ClientError::HttpError(HttpError::Unknown(
-                status.canonical_reason().unwrap_or("").to_string(),
+                status
+                    .canonical_reason()
+                    .unwrap_or(&status.to_string())
+                    .to_string(),
             )),
         }
     }

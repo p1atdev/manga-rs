@@ -26,7 +26,7 @@ pub enum HttpError {
 
 #[derive(Error, Debug, Clone)]
 pub enum ClientError {
-    #[error("HTTP error")]
+    #[error("HTTP error: {0}")]
     HttpError(HttpError),
 
     #[error("Request error")]
