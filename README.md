@@ -70,5 +70,5 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
 - [x] [Comic FUZ](https://comic-fuz.com): Episode download is supported
 - [ ] ~~[Manga Library Z](https://www.mangaz.com)~~ (Service has been discontinued)
 - [ ] [Ichijin Plus](https://ichijin-plus.com)
-- [ ] [Kadokomi (former ComicWalker)](https://comic-walker.com)
+- [x] [Kadokomi (former ComicWalker)](https://comic-walker.com): Episode download is supported
 - [ ] [Piccoma](https://piccoma.com)
