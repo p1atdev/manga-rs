@@ -197,12 +197,22 @@ impl MangaPage for Page {
 pub struct Episode {
     id: String,
     title: String,
+    series_title: String,
     pages: Vec<Page>,
 }
 
 impl Episode {
-    pub(super) fn new(id: String, title: String, pages: Vec<Page>) -> Self {
-        Self { id, title, pages }
+    pub(super) fn new(id: String, title: String, series_title: String, pages: Vec<Page>) -> Self {
+        Self {
+            id,
+            title,
+            series_title,
+            pages,
+        }
+    }
+
+    pub fn series_title(&self) -> &str {
+        &self.series_title
     }
 }
 

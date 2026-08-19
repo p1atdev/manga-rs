@@ -22,7 +22,7 @@ Usage: manga <COMMAND>
 
 Commands:
   episode  Download a single episode
-  series   Download the available episodes in a GigaViewer series
+  series   Download the available episodes in a supported series
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -38,10 +38,14 @@ cargo manga --help
 cargo manga episode <URL>
 ```
 
-Downloads are saved as WebP images in a new directory under the current
-directory by default. The common download options are:
+Downloads are saved as WebP images under
+`<output-dir>/<series-name>/<episode-name>/*.webp`. The current directory is
+used as `<output-dir>` by default. ZIP and CBZ output follows the same hierarchy
+and creates `<output-dir>/<series-name>/<episode-name>.zip` or `.cbz`.
 
-- `-o, --output-dir <DIR>`: parent directory for downloaded output (default: `.`)
+The common download options are:
+
+- `-o, --output-dir <DIR>`: root directory for series and episode output (default: `.`)
 - `-s, --save-as <FORMAT>`: `raw`, `zip`, or `cbz` (default: `raw`)
 - `-f, --format <FORMAT>`: `png`, `jpeg`, or `webp` (default: `webp`)
 - `--no-progress`: disable progress bars

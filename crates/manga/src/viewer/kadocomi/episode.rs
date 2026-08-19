@@ -99,7 +99,9 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         let next_data = self.client.get_next_data(url.clone()).await?;
         let episode = self.fetch_episode(&next_data.episode_id()?).await?;
         let title = next_data.episode_title()?;
-        let path = self.writer_config.output_path(directory, &title)?;
+        let path =
+            self.writer_config
+                .episode_output_path(directory, next_data.series_title(), &title)?;
         let writer = self.file_writer(&path)?;
         self.download_pages(episode.into_pages(), writer, &title)
             .await

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use scraper::{Html, Selector};
 use url::Url;
@@ -116,6 +116,22 @@ impl Client {
         Self::parse_episode_html(&html)
     }
 
+    pub async fn get_episode_with_metadata_at(
+        &self,
+        url: Url,
+    ) -> Result<(Episode, GtmEpisode), ClientError> {
+        let html = self.get_html(url).await?;
+        Ok((
+            Self::parse_episode_html(&html)?,
+            Self::parse_gtm_data(&html)?,
+        ))
+    }
+
+    pub async fn get_episode_metadata_at(&self, url: Url) -> Result<GtmEpisode, ClientError> {
+        let html = self.get_html(url).await?;
+        Self::parse_gtm_data(&html)
+    }
+
     fn parse_episode_html(html: &Html) -> Result<Episode, ClientError> {
         let selector = Selector::parse("script#episode-json[data-value]")
             .expect("the Giga viewer selector is valid");
@@ -127,19 +143,26 @@ impl Client {
         serde_json::from_str(json).map_err(|error| ClientError::ParseError(error.to_string()))
     }
 
-    fn parse_gtm_data(html: &Html) -> Result<GtmEpisode> {
+    fn parse_gtm_data(html: &Html) -> Result<GtmEpisode, ClientError> {
         let selector = Selector::parse("html").expect("the html selector is valid");
         let json = html
             .select(&selector)
             .next()
             .and_then(|element| element.attr("data-gtm-data-layer"))
-            .context("data-gtm-data-layer attribute not found")?;
-        Ok(serde_json::from_str::<Gtm>(json)?.episode().clone())
+            .ok_or_else(|| {
+                ClientError::ParseError("data-gtm-data-layer attribute not found".to_owned())
+            })?;
+        serde_json::from_str::<Gtm>(json)
+            .map(|gtm| gtm.episode().clone())
+            .map_err(|error| ClientError::ParseError(error.to_string()))
     }
 
     pub async fn get_series_id(&self, url: Url) -> Result<String> {
-        let html = self.get_html(url).await?;
-        Ok(Self::parse_gtm_data(&html)?.series_id().to_owned())
+        Ok(self
+            .get_episode_metadata_at(url)
+            .await?
+            .series_id()
+            .to_owned())
     }
 
     pub async fn get_series_feed(&self, series_id: &str) -> Result<FeedContent, ClientError> {
@@ -172,9 +195,11 @@ mod tests {
             "/tests/fixtures/giga_episode.html"
         )));
         let episode = Client::parse_episode_html(&html).unwrap();
+        let metadata = Client::parse_gtm_data(&html).unwrap();
         let pages = episode.pages();
 
         assert_eq!(episode.id(), "episode-1");
+        assert_eq!(metadata.series_title(), "Series 1");
         assert_eq!(pages.len(), 2);
         assert_eq!(pages[0].index().unwrap(), 0);
         assert_eq!(pages[1].index().unwrap(), 1);

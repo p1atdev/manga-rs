@@ -127,6 +127,7 @@ struct EpisodeMetadata {
     viewer_id: String,
     title: String,
     series_id: String,
+    series_title: String,
 }
 
 impl Client {
@@ -168,16 +169,25 @@ impl Client {
 
         let series_selector = Selector::parse("a[href*='/series/']")
             .expect("the Comici series link selector is valid");
-        let series_id = html
+        let (series_id, series_title) = html
             .select(&series_selector)
-            .filter_map(|element| element.attr("href"))
-            .find_map(Self::series_id_from_href)
-            .ok_or_else(|| ClientError::ParseError("Comici series ID was not found".to_owned()))?;
+            .find_map(|element| {
+                let series_id = Self::series_id_from_href(element.attr("href")?)?;
+                let series_title = element.text().collect::<String>().trim().to_owned();
+                if series_title.is_empty() {
+                    return None;
+                }
+                Some((series_id, series_title))
+            })
+            .ok_or_else(|| {
+                ClientError::ParseError("Comici series title was not found".to_owned())
+            })?;
 
         Ok(EpisodeMetadata {
             viewer_id,
             title,
             series_id,
+            series_title,
         })
     }
 
@@ -260,7 +270,12 @@ impl Client {
             }
         }
 
-        Ok(Episode::new(metadata.viewer_id, metadata.title, pages))
+        Ok(Episode::new(
+            metadata.viewer_id,
+            metadata.title,
+            metadata.series_title,
+            pages,
+        ))
     }
 
     pub fn episode_url(&self, episode_id: &str) -> Result<Url, ClientError> {
@@ -268,8 +283,16 @@ impl Client {
     }
 
     pub async fn get_series_id_at(&self, episode_url: Url) -> Result<String, ClientError> {
+        Ok(self.get_series_metadata_at(episode_url).await?.0)
+    }
+
+    pub async fn get_series_metadata_at(
+        &self,
+        episode_url: Url,
+    ) -> Result<(String, String), ClientError> {
         let html = self.get_html(episode_url).await?;
-        Ok(Self::parse_episode_html(&html)?.series_id)
+        let metadata = Self::parse_episode_html(&html)?;
+        Ok((metadata.series_id, metadata.series_title))
     }
 
     async fn get_series_response(
@@ -444,8 +467,24 @@ mod tests {
                 viewer_id: "viewer-1".to_owned(),
                 title: "Series - Episode 1".to_owned(),
                 series_id: "series-1".to_owned(),
+                series_title: "Series".to_owned(),
             }
         );
+    }
+
+    #[test]
+    fn skips_series_links_without_a_title() {
+        let html = Html::parse_document(
+            r#"<html><head><title>Episode 1</title></head><body>
+                <div id="comici-viewer" data-comici-viewer-id="viewer-1"></div>
+                <a href="/series/series-1"><img src="cover.jpg"></a>
+                <a href="/series/series-1">Series</a>
+            </body></html>"#,
+        );
+
+        let metadata = Client::parse_episode_html(&html).unwrap();
+        assert_eq!(metadata.series_id, "series-1");
+        assert_eq!(metadata.series_title, "Series");
     }
 
     #[test]

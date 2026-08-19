@@ -62,6 +62,16 @@ impl WriterConfig {
         }
         Ok(path)
     }
+
+    pub fn episode_output_path<P: AsRef<Path>>(
+        &self,
+        directory: P,
+        series_title: &str,
+        episode_title: &str,
+    ) -> Result<PathBuf> {
+        let series_title = safe_file_name(series_title)?;
+        self.output_path(directory.as_ref().join(series_title), episode_title)
+    }
 }
 
 /// Shared limits for all downloads started by a pipeline.
@@ -453,6 +463,34 @@ mod tests {
     }
 
     #[test]
+    fn writer_config_builds_series_and_episode_path() {
+        let config = WriterConfig::new(SaveFormat::Raw, image::ImageFormat::WebP);
+        assert_eq!(
+            config
+                .episode_output_path("out", "Series", "Episode 1")
+                .unwrap(),
+            PathBuf::from("out/Series/Episode 1")
+        );
+    }
+
+    #[test]
+    fn writer_config_sanitizes_both_output_path_components() {
+        let config = WriterConfig::new(
+            SaveFormat::Zip {
+                compression_method: zip::CompressionMethod::Deflated,
+                extension: Some("cbz".to_owned()),
+            },
+            image::ImageFormat::WebP,
+        );
+        assert_eq!(
+            config
+                .episode_output_path("out", "Series/Name", "Episode: 1")
+                .unwrap(),
+            PathBuf::from("out/Series_Name/Episode_ 1.cbz")
+        );
+    }
+
+    #[test]
     fn writer_config_neutralizes_path_separators() {
         let config = WriterConfig::new(SaveFormat::Raw, image::ImageFormat::Png);
         assert_eq!(
@@ -536,16 +574,22 @@ mod tests {
 
 #[derive(Clone, Debug)]
 pub struct EpisodeQueueItem {
+    series_title: String,
     title: String,
     url: Url,
 }
 
 impl EpisodeQueueItem {
-    pub fn new(title: &str, url: Url) -> Self {
+    pub fn new(series_title: &str, title: &str, url: Url) -> Self {
         EpisodeQueueItem {
+            series_title: series_title.to_string(),
             title: title.to_string(),
             url,
         }
+    }
+
+    pub fn series_title(&self) -> &str {
+        &self.series_title
     }
 
     pub fn title(&self) -> &str {

@@ -20,8 +20,8 @@ use super::{
 
 impl SeriesPipeline<Page, Episode> for Pipeline {
     async fn get_episode_queue(&self, url: Url) -> Result<Vec<EpisodeQueueItem>> {
-        let series_id = self.client.get_series_id(url).await?;
-        let feed = self.client.get_series_feed(&series_id).await?;
+        let metadata = self.client.get_episode_metadata_at(url).await?;
+        let feed = self.client.get_series_feed(metadata.series_id()).await?;
         let mut entries = feed.entries();
         entries.sort_by_key(|entry| entry.updated());
 
@@ -36,7 +36,11 @@ impl SeriesPipeline<Page, Episode> for Pipeline {
                     .into_iter()
                     .find(|link| link.rel().as_deref() != Some("enclosure"))
                     .context("episode link not found in series feed")?;
-                Ok(EpisodeQueueItem::new(&title, Url::parse(&url.url())?))
+                Ok(EpisodeQueueItem::new(
+                    metadata.series_title(),
+                    &title,
+                    Url::parse(&url.url())?,
+                ))
             })
             .collect()
     }
@@ -78,7 +82,11 @@ impl SeriesPipeline<Page, Episode> for Pipeline {
                     if cancelled.load(Ordering::Acquire) {
                         return None;
                     }
-                    let result = match self.writer_config.output_path(directory, item.title()) {
+                    let result = match self.writer_config.episode_output_path(
+                        directory,
+                        item.series_title(),
+                        item.title(),
+                    ) {
                         Ok(path) => self.download_episode(item.url(), &path).await,
                         Err(_) => Err(PipelineError::IoError),
                     };

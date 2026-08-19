@@ -20,13 +20,14 @@ use super::{
 
 impl SeriesPipeline<Page, Episode> for Pipeline {
     async fn get_episode_queue(&self, url: Url) -> Result<Vec<EpisodeQueueItem>> {
-        let series_id = self.client.get_series_id_at(url).await?;
+        let (series_id, series_title) = self.client.get_series_metadata_at(url).await?;
         self.client
             .get_accessible_series_episodes(&series_id)
             .await?
             .into_iter()
             .map(|episode| {
                 Ok(EpisodeQueueItem::new(
+                    &series_title,
                     episode.title(),
                     self.client.episode_url(episode.id())?,
                 ))
@@ -71,7 +72,11 @@ impl SeriesPipeline<Page, Episode> for Pipeline {
                     if cancelled.load(Ordering::Acquire) {
                         return None;
                     }
-                    let result = match self.writer_config.output_path(directory, item.title()) {
+                    let result = match self.writer_config.episode_output_path(
+                        directory,
+                        item.series_title(),
+                        item.title(),
+                    ) {
                         Ok(path) => self.download_episode(item.url(), &path).await,
                         Err(_) => Err(PipelineError::IoError),
                     };

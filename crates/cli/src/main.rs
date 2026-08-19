@@ -53,7 +53,7 @@ struct SeriesArgs {
 
 #[derive(Debug, Clone, Args)]
 struct DownloadArgs {
-    /// Directory in which downloaded directories or archives will be created.
+    /// Root directory for series and episode output.
     #[arg(short, long, default_value = ".")]
     output_dir: PathBuf,
 

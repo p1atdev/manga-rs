@@ -89,9 +89,14 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
     }
 
     async fn download_in<P: AsRef<Path>>(&self, url: &Url, directory: &P) -> Result<()> {
-        let episode = self.client.get_episode_at(url.clone()).await?;
+        let (episode, metadata) = self
+            .client
+            .get_episode_with_metadata_at(url.clone())
+            .await?;
         let title = episode.title().context("episode title not found")?;
-        let path = self.writer_config.output_path(directory, &title)?;
+        let path =
+            self.writer_config
+                .episode_output_path(directory, metadata.series_title(), &title)?;
         let writer = self.file_writer(&path)?;
         self.download_pages(episode.into_pages(), writer, &title)
             .await
