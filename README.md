@@ -91,7 +91,7 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
   - [Ourfeel](https://ourfeel.jp)
   - [Ichijin Plus](https://ichijin-plus.com) (now detected as a GigaViewer-compatible site)
 - [x] [Kadokomi (former ComicWalker)](https://comic-walker.com): episode download is supported
-- [x] Comici Viewer family: episode downloads are supported
+- [x] [Comici Viewer](https://comici.co.jp/business/comici-plus) family: episode downloads are supported
   - [Bibibi Comic](https://bibibi-comic.com)
 - [ ] [Comic FUZ](https://comic-fuz.com): deferred because its protobuf API is currently unstable; library code is available behind the `fuz` feature
 - [ ] [Manga Library Z](https://www.mangaz.com): deferred; library code is available behind the `mangaz` feature
