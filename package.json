@@ -1,0 +1,18 @@
+{
+  "name": "manga-rs",
+  "private": true,
+  "type": "module",
+  "module": "index.ts",
+  "scripts": {
+    "format": "oxfmt",
+    "lint": "oxlint"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "oxfmt": "^0.64.0",
+    "oxlint": "^1.79.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

@@ -15,7 +15,7 @@ cargo install --git https://github.com/p1atdev/manga-rs cli
 Usage: manga <COMMAND>
 
 Commands:
-  episode  
+  episode
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -46,7 +46,6 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
 ```
 
 ## Supported Websites
-
 
 - [x] [ChojuGiga Viewer](https://hatena.co.jp/solutions/gigaviewer) family: Episode and Series download are supported
   - [Shonen Jump Plus](https://shonenjumpplus.com)

@@ -34,3 +34,5 @@ output
 
 #/target
 .rustc_info.json
+
+node_modules
