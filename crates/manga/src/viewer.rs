@@ -12,7 +12,7 @@ pub mod mangaz;
 use std::future::Future;
 
 use anyhow::Result;
-use reqwest::{header::HeaderMap, Response, StatusCode};
+use reqwest::{Response, StatusCode, header::HeaderMap};
 use url::Url;
 
 use crate::{auth::Auth, error::ClientError};

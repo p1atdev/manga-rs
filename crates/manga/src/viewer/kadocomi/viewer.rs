@@ -7,7 +7,7 @@ use crate::{
     auth::EmptyAuth,
     error::ClientError,
     http::HttpClient,
-    utils::{extract_next_data_json, UserAgent},
+    utils::{UserAgent, extract_next_data_json},
     viewer::{ViewerConfig, ViewerConfigBuilder},
 };
 

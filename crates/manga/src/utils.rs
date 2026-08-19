@@ -21,9 +21,9 @@ macro_rules! include_proto {
 }
 use std::io::Cursor;
 
+use anyhow::Result;
 #[cfg(any(feature = "kadokomi", test))]
 use anyhow::anyhow;
-use anyhow::Result;
 use image::{DynamicImage, ImageFormat};
 #[cfg(feature = "fuz")]
 pub(crate) use include_proto;

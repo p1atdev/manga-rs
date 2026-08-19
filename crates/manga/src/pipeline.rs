@@ -3,8 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{ensure, Result};
-use futures::{stream, StreamExt, TryStreamExt};
+use anyhow::{Result, ensure};
+use futures::{StreamExt, TryStreamExt, stream};
 use image::DynamicImage;
 use url::Url;
 
@@ -362,10 +362,12 @@ mod tests {
         };
         let writer = pipeline.file_writer(&path).unwrap();
 
-        assert!(pipeline
-            .download_pages(vec![TestPage], writer, "test")
-            .await
-            .is_err());
+        assert!(
+            pipeline
+                .download_pages(vec![TestPage], writer, "test")
+                .await
+                .is_err()
+        );
 
         let archive = ::zip::ZipArchive::new(std::fs::File::open(&path).unwrap()).unwrap();
         assert!(archive.is_empty());

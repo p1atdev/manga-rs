@@ -1,4 +1,4 @@
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use image::DynamicImage;
 
 use crate::{solver::ImageSolver, utils::Bytes};

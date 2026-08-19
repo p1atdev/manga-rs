@@ -3,8 +3,8 @@ use std::sync::LazyLock;
 use anyhow::Result;
 
 use regex::Regex;
-use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::Response;
+use reqwest::header::{self, HeaderMap, HeaderValue};
 use url::Url;
 
 use crate::auth::EmptyAuth;
@@ -12,7 +12,7 @@ use crate::error::ClientError;
 use crate::utils;
 use crate::viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder};
 
-use super::data::{web_manga_viewer, Episode};
+use super::data::{Episode, web_manga_viewer};
 
 /// Episode path pattern
 static EPISODE_PATH_PATTERN: LazyLock<Regex> =

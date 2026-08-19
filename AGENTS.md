@@ -6,8 +6,8 @@
 
 Rust を使う。
 
-- `cli` ディレクトリ: CLI ツールから漫画をダウンロード
-- `manga` ディレクトリ: スクレイピングを行うためのライブラリ
+- `crates/cli` ディレクトリ: CLI ツールから漫画をダウンロード
+- `crates/manga` ディレクトリ: スクレイピングを行うためのライブラリ
 - `playground` ディレクトリ: TypeScript を利用したテスト
 
 TypeScript は Bun を使用。

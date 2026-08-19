@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use manga::{
     pipeline::{EpisodePipeline, EpisodePipelineBuilder, SeriesPipeline, WriterConfig},
     progress::ProgressConfig,
     viewer::{
-        detect::detect, giga::pipeline::Pipeline as GigaPipeline,
-        kadocomi::pipeline::Pipeline as KadokomiPipeline, ViewerType,
+        ViewerType, detect::detect, giga::pipeline::Pipeline as GigaPipeline,
+        kadocomi::pipeline::Pipeline as KadokomiPipeline,
     },
 };
 use url::Url;

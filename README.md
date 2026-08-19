@@ -79,10 +79,10 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
 
 ## Architecture
 
-- `cli`: detects the viewer and dispatches to the matching download pipeline.
-- `manga/src/viewer`: viewer-specific page parsing, API access, and image solving.
-- `manga/src/pipeline.rs`: shared concurrent fetch, solve, and write orchestration.
-- `manga/src/io`: raw-directory and ZIP/CBZ writers.
+- `crates/cli`: detects the viewer and dispatches to the matching download pipeline.
+- `crates/manga/src/viewer`: viewer-specific page parsing, API access, and image solving.
+- `crates/manga/src/pipeline.rs`: shared concurrent fetch, solve, and write orchestration.
+- `crates/manga/src/io`: raw-directory and ZIP/CBZ writers.
 
 The `manga` crate enables `giga` and `kadokomi` by default. Live-site smoke tests
 are ignored during normal test runs; fixture-based parsing and image-processing

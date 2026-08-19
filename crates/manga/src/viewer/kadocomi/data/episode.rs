@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::{
-    de::{SeqAccess, Visitor},
     Deserialize, Deserializer, Serialize,
+    de::{SeqAccess, Visitor},
 };
 use url::Url;
 

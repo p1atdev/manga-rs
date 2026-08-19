@@ -1,7 +1,7 @@
-use anyhow::{anyhow, bail, Result};
-use base64::{engine::general_purpose::STANDARD, Engine as _};
-use reqwest::header::{self, HeaderMap, HeaderValue};
+use anyhow::{Result, anyhow, bail};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use reqwest::Response;
+use reqwest::header::{self, HeaderMap, HeaderValue};
 use scraper::{Html, Selector};
 use url::Url;
 

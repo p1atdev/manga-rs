@@ -1,6 +1,6 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use web_manga_viewer::{
-    viewer_page, web_manga_viewer_response::viewer_data, WebMangaViewerResponse,
+    WebMangaViewerResponse, viewer_page, web_manga_viewer_response::viewer_data,
 };
 
 use crate::data::{IndexNumber, MangaEpisode, MangaPage, ScrollDirection};

@@ -7,8 +7,8 @@ use std::{
 use anyhow::{Context, Result};
 use image::DynamicImage;
 use zip::{
-    write::{ExtendedFileOptions, FileOptions},
     CompressionMethod,
+    write::{ExtendedFileOptions, FileOptions},
 };
 
 use crate::utils;
