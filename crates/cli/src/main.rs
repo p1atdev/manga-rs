@@ -57,13 +57,13 @@ struct DownloadArgs {
     #[arg(short, long, default_value = ".")]
     output_dir: PathBuf,
 
-    /// Output container.
-    #[arg(short, long, default_value = "raw")]
-    save_as: SaveFormat,
+    /// Final output format.
+    #[arg(short = 'f', long, default_value = "directory")]
+    format: OutputFormat,
 
     /// Output image format.
-    #[arg(short, long, default_value = "webp")]
-    format: ImageFormat,
+    #[arg(short = 'i', long, default_value = "webp")]
+    image_format: ImageFormat,
 
     /// Disable progress bars.
     #[arg(long)]
@@ -85,7 +85,7 @@ impl DownloadArgs {
         } else {
             ProgressConfig::default()
         };
-        let writer = WriterConfig::new(self.save_as.into(), self.format.into());
+        let writer = WriterConfig::new(self.format.into(), self.image_format.into());
         let mut pipeline = pipeline
             .set_progress(progress)
             .set_writer_config(writer)
@@ -108,21 +108,21 @@ enum ImageFormat {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-enum SaveFormat {
-    Raw,
+enum OutputFormat {
+    Directory,
     Zip,
     Cbz,
 }
 
-impl From<SaveFormat> for manga::pipeline::SaveFormat {
-    fn from(value: SaveFormat) -> Self {
+impl From<OutputFormat> for manga::pipeline::SaveFormat {
+    fn from(value: OutputFormat) -> Self {
         match value {
-            SaveFormat::Raw => Self::Raw,
-            SaveFormat::Zip => Self::Zip {
+            OutputFormat::Directory => Self::Raw,
+            OutputFormat::Zip => Self::Zip {
                 compression_method: zip::CompressionMethod::Deflated,
                 extension: None,
             },
-            SaveFormat::Cbz => Self::Zip {
+            OutputFormat::Cbz => Self::Zip {
                 compression_method: zip::CompressionMethod::Deflated,
                 extension: Some("cbz".to_owned()),
             },
@@ -228,16 +228,18 @@ mod tests {
             "https://example.com/episode/1",
             "--output-dir",
             "downloads",
-            "--save-as",
+            "--format",
             "cbz",
+            "--image-format",
+            "png",
         ])
         .unwrap();
 
         match cli.command {
             Command::Episode(args) => {
                 assert_eq!(args.download.output_dir, PathBuf::from("downloads"));
-                assert_eq!(args.download.save_as, SaveFormat::Cbz);
-                assert_eq!(args.download.format, ImageFormat::Webp);
+                assert_eq!(args.download.format, OutputFormat::Cbz);
+                assert_eq!(args.download.image_format, ImageFormat::Png);
             }
             Command::Series(_) => panic!("expected episode command"),
         }
@@ -251,8 +253,8 @@ mod tests {
         match cli.command {
             Command::Series(args) => {
                 assert_eq!(args.download.output_dir, PathBuf::from("."));
-                assert_eq!(args.download.save_as, SaveFormat::Raw);
-                assert_eq!(args.download.format, ImageFormat::Webp);
+                assert_eq!(args.download.format, OutputFormat::Directory);
+                assert_eq!(args.download.image_format, ImageFormat::Webp);
                 assert!(!args.download.no_progress);
                 assert_eq!(args.download.jobs, None);
                 assert_eq!(args.download.connections.get(), 8);
@@ -299,5 +301,28 @@ mod tests {
 
             assert_eq!(error.kind(), ErrorKind::ValueValidation);
         }
+    }
+
+    #[test]
+    fn rejects_removed_output_options() {
+        let save_as = Cli::try_parse_from([
+            "manga",
+            "episode",
+            "https://example.com/episode/1",
+            "--save-as",
+            "cbz",
+        ])
+        .unwrap_err();
+        assert_eq!(save_as.kind(), ErrorKind::UnknownArgument);
+
+        let raw = Cli::try_parse_from([
+            "manga",
+            "episode",
+            "https://example.com/episode/1",
+            "--format",
+            "raw",
+        ])
+        .unwrap_err();
+        assert_eq!(raw.kind(), ErrorKind::InvalidValue);
     }
 }

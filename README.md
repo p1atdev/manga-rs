@@ -46,8 +46,8 @@ and creates `<output-dir>/<series-name>/<episode-name>.zip` or `.cbz`.
 The common download options are:
 
 - `-o, --output-dir <DIR>`: root directory for series and episode output (default: `.`)
-- `-s, --save-as <FORMAT>`: `raw`, `zip`, or `cbz` (default: `raw`)
-- `-f, --format <FORMAT>`: `png`, `jpeg`, or `webp` (default: `webp`)
+- `-f, --format <FORMAT>`: `directory`, `zip`, or `cbz` (default: `directory`)
+- `-i, --image-format <FORMAT>`: `png`, `jpeg`, or `webp` (default: `webp`)
 - `--no-progress`: disable progress bars
 - `-j, --jobs <COUNT>`: maximum concurrent image-processing jobs (default: logical CPU count)
 - `--connections <COUNT>`: maximum concurrent network requests (default: `8`)
@@ -62,7 +62,7 @@ The common download options are:
 ```bash
 manga episode https://tonarinoyj.jp/episode/2550912964641693231 \
     --output-dir ./output \
-    --save-as cbz
+    --format cbz
 ```
 
 - download available multiple episodes as image files

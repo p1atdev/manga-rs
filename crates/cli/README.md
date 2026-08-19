@@ -8,6 +8,6 @@ From the workspace root, run it through the project-local Cargo alias:
 cargo manga episode <URL>
 ```
 
-Downloads use raw WebP output under
+Downloads use directory-based WebP output under
 `./<series-name>/<episode-name>/*.webp` by default. See the
 [workspace README](../../README.md) for all options and examples.
