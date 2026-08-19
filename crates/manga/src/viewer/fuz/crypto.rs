@@ -1,6 +1,5 @@
 use aes::Aes256Dec;
-use aes::cipher::generic_array::GenericArray;
-use aes::cipher::{BlockDecryptMut, KeyIvInit, block_padding::Pkcs7};
+use aes::cipher::{BlockModeDecrypt, KeyIvInit, block_padding::Pkcs7};
 use anyhow::Result;
 use cbc::Decryptor;
 
@@ -11,11 +10,9 @@ pub fn decrypt_aes_cbc(mut buffer: Vec<u8>, key_hex: &str, iv_hex: &str) -> Resu
     hex::decode_to_slice(key_hex, &mut key_bytes)?;
     hex::decode_to_slice(iv_hex, &mut iv_bytes)?;
 
-    let key = GenericArray::from_slice(&key_bytes);
-    let iv = GenericArray::from_slice(&iv_bytes);
-    let decrypter = Decryptor::<Aes256Dec>::new(key, iv);
+    let decrypter = Decryptor::<Aes256Dec>::new(&key_bytes.into(), &iv_bytes.into());
     let decrypted_len = decrypter
-        .decrypt_padded_mut::<Pkcs7>(&mut buffer)
+        .decrypt_padded::<Pkcs7>(&mut buffer)
         .map_err(|_| anyhow::anyhow!("invalid AES-CBC padding"))?
         .len();
     buffer.truncate(decrypted_len);
