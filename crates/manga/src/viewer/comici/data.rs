@@ -84,6 +84,58 @@ pub(super) struct ApiPage {
     height: u32,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub(super) struct SeriesResponse {
+    pub(super) series: SeriesInfo,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub(super) struct SeriesInfo {
+    pub(super) summary: SeriesSummary,
+    pub(super) episodes: Vec<SeriesEpisode>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SeriesSummary {
+    pub(super) num_episodes: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct SeriesEpisode {
+    id: String,
+    title: String,
+}
+
+impl SeriesEpisode {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SeriesAccessResponse {
+    pub(super) series_access: SeriesAccess,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SeriesAccess {
+    pub(super) episode_accesses: Vec<EpisodeAccess>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct EpisodeAccess {
+    pub(super) episode_id: String,
+    pub(super) has_access: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Page {
     image_url: Url,
@@ -205,5 +257,36 @@ mod tests {
         let result =
             serde_json::from_str::<Scramble>(r#""[0,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14]""#);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parses_series_and_access_responses() {
+        let series: SeriesResponse = serde_json::from_str(
+            r#"{
+                "series": {
+                    "summary": {"numEpisodes": 2},
+                    "episodes": [
+                        {"id": "episode-1", "title": "Episode 1"},
+                        {"id": "episode-2", "title": "Episode 2"}
+                    ]
+                }
+            }"#,
+        )
+        .unwrap();
+        let access: SeriesAccessResponse = serde_json::from_str(
+            r#"{
+                "seriesAccess": {
+                    "episodeAccesses": [
+                        {"episodeId": "episode-1", "hasAccess": true},
+                        {"episodeId": "episode-2", "hasAccess": false}
+                    ]
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(series.series.summary.num_episodes, 2);
+        assert_eq!(series.series.episodes[1].title(), "Episode 2");
+        assert!(access.series_access.episode_accesses[0].has_access);
     }
 }

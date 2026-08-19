@@ -29,7 +29,7 @@ enum Command {
     /// Download a single episode.
     Episode(EpisodeArgs),
 
-    /// Download the available episodes in a GigaViewer series.
+    /// Download the available episodes in a supported series.
     Series(SeriesArgs),
 }
 
@@ -179,7 +179,10 @@ async fn download_series(args: SeriesArgs) -> Result<()> {
 
     match detected.viewer_type() {
         ViewerType::Comici => {
-            bail!("series download is not supported for the detected Comici viewer")
+            args.download
+                .configure(ComiciPipeline::for_base_url(detected.base_url().clone()))
+                .download_series(&args.url, &args.download.output_dir)
+                .await
         }
         ViewerType::Giga => {
             args.download
