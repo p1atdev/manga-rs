@@ -1,7 +1,4 @@
-use std::{
-    future::Future,
-    path::{Path, PathBuf},
-};
+use std::{future::Future, path::Path};
 
 use anyhow::Result;
 use image::DynamicImage;
@@ -13,7 +10,7 @@ pub mod zip;
 
 /// A trait for saving manga to disk.
 pub trait EpisodeWriter {
-    fn save_path(&self) -> PathBuf;
+    fn save_path(&self) -> &Path;
 
     /// Prepare before writing
     fn prepare(&self) -> impl Future<Output = Result<()>> {
@@ -47,7 +44,7 @@ impl FileWriter {
                 extension: _,
             } => {
                 let writer = zip::ZipWriter::new(
-                    compression_method,
+                    *compression_method,
                     writer_config.image_format(),
                     save_path,
                 )?;
@@ -83,6 +80,7 @@ impl FileWriter {
 mod tests {
     use std::{
         fs::File,
+        path::PathBuf,
         sync::atomic::{AtomicU64, Ordering},
     };
 

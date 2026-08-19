@@ -130,9 +130,9 @@ impl Page {
         }
     }
 
-    pub fn image_path(&self) -> Result<String> {
+    pub fn image_path(&self) -> Result<&str> {
         match self {
-            Page::Image(ImagePage { image_path, .. }) => Ok(image_path.clone()),
+            Page::Image(ImagePage { image_path, .. }) => Ok(image_path),
             _ => bail!("Page is not an image"),
         }
     }
@@ -172,29 +172,26 @@ impl From<WebMangaViewerResponse> for Episode {
             .iter()
             .position(|c| c.chapter_id == value.chapter_id)
             .unwrap();
-        let chapter = &chapters[index];
-
         let viewer_data = value.viewer_data.unwrap();
-        let pages = &viewer_data
-            .pages
-            .clone()
-            .into_iter()
-            .enumerate()
-            .map(|(i, page)| Page::new(page, i))
-            .collect::<Vec<_>>();
-
-        let scroll_direction = match &viewer_data.scroll_direction() {
+        let scroll_direction = match viewer_data.scroll_direction() {
             viewer_data::ScrollDirection::Left => ScrollDirection::RightToLeft,
             viewer_data::ScrollDirection::Right => ScrollDirection::LeftToRight,
             viewer_data::ScrollDirection::Vertical => ScrollDirection::TopToBottom,
             viewer_data::ScrollDirection::None => ScrollDirection::Unknown,
         };
+        let pages = viewer_data
+            .pages
+            .into_iter()
+            .enumerate()
+            .map(|(i, page)| Page::new(page, i))
+            .collect();
+        let chapter = chapters.into_iter().nth(index).unwrap();
 
         Self {
             id: chapter.chapter_id.to_string(),
             index: IndexNumber::Int(index),
-            title: chapter.chapter_main_name.clone(),
-            pages: pages.clone(),
+            title: chapter.chapter_main_name,
+            pages,
             scroll_direction,
         }
     }
@@ -213,8 +210,12 @@ impl MangaEpisode<Page> for Episode {
         Some(self.title.clone())
     }
 
-    fn pages(&self) -> Vec<Page> {
-        self.pages.clone()
+    fn pages(&self) -> &[Page] {
+        &self.pages
+    }
+
+    fn into_pages(self) -> Vec<Page> {
+        self.pages
     }
 }
 

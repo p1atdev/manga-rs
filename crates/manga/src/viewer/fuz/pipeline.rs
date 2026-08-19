@@ -8,7 +8,7 @@ use crate::{
     data::{MangaEpisode, MangaPage},
     error::ClientError,
     io::FileWriter,
-    pipeline::{EpisodePipeline, EpisodePipelineBuilder, SaveFormat, WriterConfig},
+    pipeline::{DownloadLimits, EpisodePipeline, EpisodePipelineBuilder, SaveFormat, WriterConfig},
     progress::ProgressConfig,
     solver::ImageSolver,
     utils::Bytes,
@@ -26,8 +26,7 @@ pub struct Pipeline {
     client: Client,
     progress: ProgressConfig,
     writer_config: WriterConfig,
-    num_threads: usize,
-    num_connections: usize,
+    download_limits: DownloadLimits,
 }
 
 impl Pipeline {
@@ -44,8 +43,7 @@ impl Pipeline {
             client: Client::new(ConfigBuilder::new(base_url, api_url, image_url).build()),
             progress,
             writer_config,
-            num_threads,
-            num_connections,
+            download_limits: DownloadLimits::new(num_threads, num_connections),
         }
     }
 
@@ -54,8 +52,7 @@ impl Pipeline {
             client: Client::new(ConfigBuilder::new(base_url, api_url, image_url).build()),
             progress: ProgressConfig::default(),
             writer_config: WriterConfig::new(SaveFormat::Raw, image::ImageFormat::Png),
-            num_threads: num_cpus::get(),
-            num_connections: 8,
+            download_limits: DownloadLimits::new(num_cpus::get(), 8),
         }
     }
 }
@@ -72,18 +69,14 @@ impl EpisodePipelineBuilder for Pipeline {
         }
     }
 
-    fn set_num_threads(self, num_threads: usize) -> Self {
-        Self {
-            num_threads,
-            ..self
-        }
+    fn set_num_threads(mut self, num_threads: usize) -> Self {
+        self.download_limits.set_num_threads(num_threads);
+        self
     }
 
-    fn set_num_connections(self, num_connections: usize) -> Self {
-        Self {
-            num_connections,
-            ..self
-        }
+    fn set_num_connections(mut self, num_connections: usize) -> Self {
+        self.download_limits.set_num_connections(num_connections);
+        self
     }
 }
 
@@ -136,12 +129,8 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         &self.progress
     }
 
-    fn num_threads(&self) -> usize {
-        self.num_threads
-    }
-
-    fn num_connections(&self) -> usize {
-        self.num_connections
+    fn download_limits(&self) -> &DownloadLimits {
+        &self.download_limits
     }
 
     async fn download<P: AsRef<Path>>(&self, url: &Url, path: &P) -> Result<()> {
@@ -152,7 +141,7 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         let episode = self.fetch_episode(&episode_id).await?;
         let title = episode.title().context("episode title not found")?;
         let pages = episode
-            .pages()
+            .into_pages()
             .into_iter()
             .filter(MangaPage::is_image)
             .collect();
@@ -168,7 +157,7 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         let episode = self.fetch_episode(&episode_id).await?;
         let title = episode.title().context("episode title not found")?;
         let pages = episode
-            .pages()
+            .into_pages()
             .into_iter()
             .filter(MangaPage::is_image)
             .collect();

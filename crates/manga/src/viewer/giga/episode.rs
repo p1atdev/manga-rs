@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use image::DynamicImage;
@@ -8,7 +8,7 @@ use crate::{
     data::MangaEpisode,
     error::ClientError,
     io::FileWriter,
-    pipeline::{EpisodePipeline, EpisodePipelineBuilder, WriterConfig},
+    pipeline::{DownloadLimits, EpisodePipeline, EpisodePipelineBuilder, WriterConfig},
     progress::ProgressConfig,
     solver::ImageSolver,
     utils::Bytes,
@@ -32,18 +32,14 @@ impl EpisodePipelineBuilder for Pipeline {
         }
     }
 
-    fn set_num_threads(self, num_threads: usize) -> Self {
-        Self {
-            num_threads,
-            ..self
-        }
+    fn set_num_threads(mut self, num_threads: usize) -> Self {
+        self.download_limits.set_num_threads(num_threads);
+        self
     }
 
-    fn set_num_connections(self, num_connections: usize) -> Self {
-        Self {
-            num_connections,
-            ..self
-        }
+    fn set_num_connections(mut self, num_connections: usize) -> Self {
+        self.download_limits.set_num_connections(num_connections);
+        self
     }
 }
 
@@ -65,11 +61,11 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
     }
 
     async fn solve_image_bytes(&self, image: Bytes, _page: Option<Page>) -> Result<Bytes> {
-        tokio::task::spawn_blocking(move || Arc::new(Solver::new()).solve(image)).await?
+        tokio::task::spawn_blocking(move || Solver::new().solve(image)).await?
     }
 
     async fn solve_image(&self, image: Bytes, _page: Option<Page>) -> Result<DynamicImage> {
-        tokio::task::spawn_blocking(move || Arc::new(Solver::new()).solve_from_bytes(image)).await?
+        tokio::task::spawn_blocking(move || Solver::new().solve_from_bytes(image)).await?
     }
 
     fn file_writer<P: AsRef<Path>>(&self, save_path: &P) -> Result<FileWriter> {
@@ -80,19 +76,16 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         &self.progress
     }
 
-    fn num_threads(&self) -> usize {
-        self.num_threads
-    }
-
-    fn num_connections(&self) -> usize {
-        self.num_connections
+    fn download_limits(&self) -> &DownloadLimits {
+        &self.download_limits
     }
 
     async fn download<P: AsRef<Path>>(&self, url: &Url, path: &P) -> Result<()> {
         let episode = self.client.get_episode_at(url.clone()).await?;
         let title = episode.title().context("episode title not found")?;
         let writer = self.file_writer(path)?;
-        self.download_pages(episode.pages(), writer, &title).await
+        self.download_pages(episode.into_pages(), writer, &title)
+            .await
     }
 
     async fn download_in<P: AsRef<Path>>(&self, url: &Url, directory: &P) -> Result<()> {
@@ -100,7 +93,8 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         let title = episode.title().context("episode title not found")?;
         let path = self.writer_config.output_path(directory, &title)?;
         let writer = self.file_writer(&path)?;
-        self.download_pages(episode.pages(), writer, &title).await
+        self.download_pages(episode.into_pages(), writer, &title)
+            .await
     }
 }
 

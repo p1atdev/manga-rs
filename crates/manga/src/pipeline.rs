@@ -1,11 +1,16 @@
 use std::{
     future::Future,
     path::{Path, PathBuf},
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
-use anyhow::{Result, ensure};
-use futures::{StreamExt, TryStreamExt, stream};
+use anyhow::{Context, Result, ensure};
+use futures::{StreamExt, stream};
 use image::DynamicImage;
+use tokio::sync::Semaphore;
 use url::Url;
 
 use crate::{
@@ -41,8 +46,8 @@ impl WriterConfig {
         }
     }
 
-    pub fn save_format(&self) -> SaveFormat {
-        self.save_format.clone()
+    pub fn save_format(&self) -> &SaveFormat {
+        &self.save_format
     }
 
     pub fn image_format(&self) -> image::ImageFormat {
@@ -57,6 +62,95 @@ impl WriterConfig {
         }
         Ok(path)
     }
+}
+
+/// Shared limits for all downloads started by a pipeline.
+#[derive(Debug, Clone)]
+pub struct DownloadLimits {
+    num_threads: usize,
+    num_connections: usize,
+    in_flight: Arc<OnceLock<Semaphore>>,
+    processing: Arc<OnceLock<Semaphore>>,
+    connections: Arc<OnceLock<Semaphore>>,
+}
+
+impl DownloadLimits {
+    pub fn new(num_threads: usize, num_connections: usize) -> Self {
+        Self {
+            num_threads,
+            num_connections,
+            in_flight: Arc::new(OnceLock::new()),
+            processing: Arc::new(OnceLock::new()),
+            connections: Arc::new(OnceLock::new()),
+        }
+    }
+
+    pub fn num_threads(&self) -> usize {
+        self.num_threads
+    }
+
+    pub fn num_connections(&self) -> usize {
+        self.num_connections
+    }
+
+    pub fn set_num_threads(&mut self, num_threads: usize) {
+        self.num_threads = num_threads;
+        self.in_flight = Arc::new(OnceLock::new());
+        self.processing = Arc::new(OnceLock::new());
+    }
+
+    pub fn set_num_connections(&mut self, num_connections: usize) {
+        self.num_connections = num_connections;
+        self.in_flight = Arc::new(OnceLock::new());
+        self.connections = Arc::new(OnceLock::new());
+    }
+
+    pub(crate) fn validate(&self) -> Result<usize> {
+        ensure!(
+            self.num_connections > 0,
+            "num_connections must be greater than zero"
+        );
+        ensure!(
+            self.num_threads > 0,
+            "num_threads must be greater than zero"
+        );
+        let max_in_flight = self
+            .num_connections
+            .checked_add(self.num_threads)
+            .context("combined download concurrency is too large")?;
+        ensure!(
+            max_in_flight <= Semaphore::MAX_PERMITS,
+            "combined download concurrency exceeds the supported limit"
+        );
+        Ok(max_in_flight)
+    }
+
+    fn in_flight(&self, max_in_flight: usize) -> &Semaphore {
+        self.in_flight.get_or_init(|| Semaphore::new(max_in_flight))
+    }
+
+    fn processing(&self) -> &Semaphore {
+        self.processing
+            .get_or_init(|| Semaphore::new(self.num_threads))
+    }
+
+    fn connections(&self) -> &Semaphore {
+        self.connections
+            .get_or_init(|| Semaphore::new(self.num_connections))
+    }
+
+    pub(crate) async fn acquire_connection(&self) -> Result<tokio::sync::SemaphorePermit<'_>> {
+        self.connections()
+            .acquire()
+            .await
+            .context("download connection limiter was closed")
+    }
+}
+
+enum PageDownloadResult {
+    Downloaded,
+    Cancelled,
+    Failed(anyhow::Error),
 }
 
 fn safe_file_name(title: &str) -> Result<String> {
@@ -124,57 +218,99 @@ pub trait EpisodePipeline<P: MangaPage, E: MangaEpisode<P>> {
 
     fn progress(&self) -> &ProgressConfig;
 
-    fn num_threads(&self) -> usize;
-
-    fn num_connections(&self) -> usize;
+    fn download_limits(&self) -> &DownloadLimits;
 
     async fn download_pages(&self, pages: Vec<P>, writer: FileWriter, title: &str) -> Result<()>
     where
         Self: Sync,
         P: Send + 'static,
     {
-        ensure!(
-            self.num_connections() > 0,
-            "num_connections must be greater than zero"
-        );
-        ensure!(
-            self.num_threads() > 0,
-            "num_threads must be greater than zero"
-        );
-        writer.prepare().await?;
+        let limits = self.download_limits();
+        let max_in_flight = limits.validate()?;
         let progress = self
             .progress()
             .build_with_message(pages.len(), format!("Downloading {title}..."))?;
-        let processing_result = stream::iter(pages)
+        writer.prepare().await?;
+        let cancelled = AtomicBool::new(false);
+        let processing_error = stream::iter(pages)
             .enumerate()
-            .map(|(index, page)| async move {
-                let bytes = self.fetch_image(&page).await?;
-                Ok::<_, anyhow::Error>((index, bytes, page))
-            })
-            .buffer_unordered(self.num_connections())
-            .map_ok(|(index, bytes, page)| async move {
-                let image = self.solve_image(bytes, Some(page)).await?;
-                Ok::<_, anyhow::Error>((index, image))
-            })
-            .try_buffer_unordered(self.num_threads())
-            .map_ok(|(index, image)| {
-                let writer = writer.clone();
+            .map(|(index, page)| {
+                let cancelled = &cancelled;
+                let writer = &writer;
                 async move {
-                    writer.write_page(index, image).await?;
-                    Ok::<_, anyhow::Error>(())
+                    if cancelled.load(Ordering::Acquire) {
+                        return PageDownloadResult::Cancelled;
+                    }
+
+                    let result = async {
+                        let in_flight_permit = limits
+                            .in_flight(max_in_flight)
+                            .acquire()
+                            .await
+                            .context("in-flight page limiter was closed")?;
+                        if cancelled.load(Ordering::Acquire) {
+                            return Ok(None);
+                        }
+                        let bytes = {
+                            let connection_permit = limits.acquire_connection().await?;
+                            if cancelled.load(Ordering::Acquire) {
+                                return Ok(None);
+                            }
+                            let bytes = self.fetch_image(&page).await?;
+                            drop(connection_permit);
+                            bytes
+                        };
+
+                        let processing_permit = limits
+                            .processing()
+                            .acquire()
+                            .await
+                            .context("image processing limiter was closed")?;
+                        if cancelled.load(Ordering::Acquire) {
+                            return Ok(None);
+                        }
+                        let image = self.solve_image(bytes, Some(page)).await?;
+                        if cancelled.load(Ordering::Acquire) {
+                            return Ok(None);
+                        }
+                        writer.write_page(index, image).await?;
+                        drop(processing_permit);
+                        drop(in_flight_permit);
+
+                        Ok::<_, anyhow::Error>(Some(()))
+                    }
+                    .await;
+
+                    match result {
+                        Ok(Some(())) => PageDownloadResult::Downloaded,
+                        Ok(None) => PageDownloadResult::Cancelled,
+                        Err(error) => {
+                            cancelled.store(true, Ordering::Release);
+                            PageDownloadResult::Failed(error)
+                        }
+                    }
                 }
             })
-            .try_buffer_unordered(self.num_threads())
-            .try_for_each(|()| {
-                progress.inc(1);
-                async { Ok(()) }
+            .buffer_unordered(max_in_flight)
+            .fold(None, |first_error, result| {
+                let next_error = match result {
+                    PageDownloadResult::Downloaded => {
+                        progress.inc(1);
+                        first_error
+                    }
+                    PageDownloadResult::Cancelled => first_error,
+                    PageDownloadResult::Failed(error) => first_error.or(Some(error)),
+                };
+                async move { next_error }
             })
             .await;
 
         let finish_result = writer.finish().await;
         progress.finish();
 
-        processing_result?;
+        if let Some(error) = processing_error {
+            return Err(error);
+        }
         finish_result
     }
 
@@ -187,7 +323,7 @@ pub trait EpisodePipeline<P: MangaPage, E: MangaEpisode<P>> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
     use anyhow::anyhow;
 
@@ -222,7 +358,11 @@ mod tests {
             Some("test".to_owned())
         }
 
-        fn pages(&self) -> Vec<TestPage> {
+        fn pages(&self) -> &[TestPage] {
+            std::slice::from_ref(&TestPage)
+        }
+
+        fn into_pages(self) -> Vec<TestPage> {
             vec![TestPage]
         }
     }
@@ -230,8 +370,8 @@ mod tests {
     struct FailingPipeline {
         progress: ProgressConfig,
         writer_config: WriterConfig,
-        num_threads: usize,
-        num_connections: usize,
+        limits: DownloadLimits,
+        fetch_count: AtomicUsize,
     }
 
     impl EpisodePipeline<TestPage, TestEpisode> for FailingPipeline {
@@ -240,6 +380,7 @@ mod tests {
         }
 
         async fn fetch_image(&self, _page: &TestPage) -> Result<Bytes, ClientError> {
+            self.fetch_count.fetch_add(1, Ordering::Relaxed);
             Err(ClientError::InvalidPage)
         }
 
@@ -263,12 +404,8 @@ mod tests {
             &self.progress
         }
 
-        fn num_threads(&self) -> usize {
-            self.num_threads
-        }
-
-        fn num_connections(&self) -> usize {
-            self.num_connections
+        fn download_limits(&self) -> &DownloadLimits {
+            &self.limits
         }
 
         async fn download<T: AsRef<Path>>(&self, _url: &Url, _path: &T) -> Result<()> {
@@ -331,8 +468,8 @@ mod tests {
         let pipeline = FailingPipeline {
             progress: ProgressConfig::disabled(),
             writer_config: WriterConfig::new(SaveFormat::Raw, image::ImageFormat::Png),
-            num_threads: 1,
-            num_connections: 0,
+            limits: DownloadLimits::new(1, 0),
+            fetch_count: AtomicUsize::new(0),
         };
         let writer = pipeline.file_writer(&path).unwrap();
 
@@ -357,8 +494,8 @@ mod tests {
                 },
                 image::ImageFormat::Png,
             ),
-            num_threads: 1,
-            num_connections: 1,
+            limits: DownloadLimits::new(1, 1),
+            fetch_count: AtomicUsize::new(0),
         };
         let writer = pipeline.file_writer(&path).unwrap();
 
@@ -372,6 +509,28 @@ mod tests {
         let archive = ::zip::ZipArchive::new(std::fs::File::open(&path).unwrap()).unwrap();
         assert!(archive.is_empty());
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn stops_starting_pages_after_first_error() {
+        let path = test_path("raw");
+        let pipeline = FailingPipeline {
+            progress: ProgressConfig::disabled(),
+            writer_config: WriterConfig::new(SaveFormat::Raw, image::ImageFormat::Png),
+            limits: DownloadLimits::new(2, 2),
+            fetch_count: AtomicUsize::new(0),
+        };
+        let writer = pipeline.file_writer(&path).unwrap();
+
+        assert!(
+            pipeline
+                .download_pages(vec![TestPage; 100], writer, "test")
+                .await
+                .is_err()
+        );
+        assert!(pipeline.fetch_count.load(Ordering::Relaxed) <= 4);
+
+        std::fs::remove_dir_all(path).unwrap();
     }
 }
 

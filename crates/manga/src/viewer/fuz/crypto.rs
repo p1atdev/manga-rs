@@ -1,33 +1,26 @@
 use aes::Aes256Dec;
-use aes::cipher::KeyIvInit;
 use aes::cipher::generic_array::GenericArray;
+use aes::cipher::{BlockDecryptMut, KeyIvInit, block_padding::Pkcs7};
 use anyhow::Result;
 use cbc::Decryptor;
-use cipher::{BlockDecryptMut, BlockSizeUser};
-use hex::decode;
-use std::sync::{Arc, Mutex};
 
 /// decrypt AES-CBC encrypted data
-pub fn decrypt_aes_cbc(buffer: &[u8], key_hex: &str, iv_hex: &str) -> Result<Vec<u8>> {
-    let key_bytes = decode(key_hex)?;
-    let iv_bytes = decode(iv_hex)?;
+pub fn decrypt_aes_cbc(mut buffer: Vec<u8>, key_hex: &str, iv_hex: &str) -> Result<Vec<u8>> {
+    let mut key_bytes = [0; 32];
+    let mut iv_bytes = [0; 16];
+    hex::decode_to_slice(key_hex, &mut key_bytes)?;
+    hex::decode_to_slice(iv_hex, &mut iv_bytes)?;
 
     let key = GenericArray::from_slice(&key_bytes);
     let iv = GenericArray::from_slice(&iv_bytes);
     let decrypter = Decryptor::<Aes256Dec>::new(key, iv);
-    let decrypter = Arc::new(Mutex::new(decrypter));
+    let decrypted_len = decrypter
+        .decrypt_padded_mut::<Pkcs7>(&mut buffer)
+        .map_err(|_| anyhow::anyhow!("invalid AES-CBC padding"))?
+        .len();
+    buffer.truncate(decrypted_len);
 
-    let mut buffer = buffer
-        .to_vec()
-        .chunks(Aes256Dec::block_size())
-        .map(GenericArray::clone_from_slice)
-        .collect::<Vec<GenericArray<_, _>>>();
-
-    buffer.iter_mut().for_each(|chunk| {
-        decrypter.lock().unwrap().decrypt_block_mut(chunk);
-    });
-
-    Ok(buffer.concat())
+    Ok(buffer)
 }
 
 #[cfg(test)]
@@ -43,7 +36,10 @@ mod tests {
 
         let image_path = "./tests/assets/fuz-encrypted.jpeg";
         let encrypted_data = fs::read(image_path).expect("Failed to read the encrypted image file");
-        let decrypted_data = decrypt_aes_cbc(&encrypted_data, key, iv).unwrap();
+        let encrypted_allocation = encrypted_data.as_ptr();
+        let decrypted_data = decrypt_aes_cbc(encrypted_data, key, iv).unwrap();
+        assert_eq!(decrypted_data.as_ptr(), encrypted_allocation);
+        assert!(decrypted_data.ends_with(&[0xff, 0xd9]));
         let image = image::load_from_memory(&decrypted_data).unwrap();
         assert_ne!(image.dimensions(), (0, 0));
     }

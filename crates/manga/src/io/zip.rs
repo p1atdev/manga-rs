@@ -1,11 +1,12 @@
 use std::{
     io::Write,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use anyhow::{Context, Result};
 use image::DynamicImage;
+use tokio::sync::Mutex;
 use zip::{
     CompressionMethod,
     write::{ExtendedFileOptions, FileOptions},
@@ -49,8 +50,8 @@ impl ZipWriter {
 }
 
 impl EpisodeWriter for ZipWriter {
-    fn save_path(&self) -> PathBuf {
-        self.save_path.clone()
+    fn save_path(&self) -> &Path {
+        &self.save_path
     }
 
     async fn prepare(&self) -> Result<()> {
@@ -64,16 +65,12 @@ impl EpisodeWriter for ZipWriter {
         }
 
         let save_path = self.save_path.clone();
-        let writer = self.writer.clone();
-        tokio::task::spawn_blocking(move || {
+        let zip = tokio::task::spawn_blocking(move || {
             let file = std::fs::File::create(save_path)?;
-            let mut state = writer
-                .lock()
-                .map_err(|_| anyhow::anyhow!("zip writer lock poisoned"))?;
-            *state = Some(zip::ZipWriter::new(file));
-            Ok::<_, anyhow::Error>(())
+            Ok::<_, anyhow::Error>(zip::ZipWriter::new(file))
         })
         .await??;
+        *self.writer.lock().await = Some(zip);
 
         Ok(())
     }
@@ -82,14 +79,12 @@ impl EpisodeWriter for ZipWriter {
         let options = FileOptions::<ExtendedFileOptions>::default()
             .compression_method(self.compression_method);
         let image_format = self.image_format;
-        let writer = self.writer.clone();
         let file_name = format!("{page:04}.{}", image_format.extensions_str()[0]);
 
+        let byte = tokio::task::spawn_blocking(move || utils::encode_image(&image, image_format))
+            .await??;
+        let mut state = self.writer.clone().lock_owned().await;
         tokio::task::spawn_blocking(move || {
-            let byte = utils::encode_image(&image, image_format)?;
-            let mut state = writer
-                .lock()
-                .map_err(|_| anyhow::anyhow!("zip writer lock poisoned"))?;
             let zip = state.as_mut().context("zip writer was not prepared")?;
             zip.start_file(file_name, options)?;
             zip.write_all(&byte)?;
@@ -99,11 +94,8 @@ impl EpisodeWriter for ZipWriter {
     }
 
     async fn finish(&self) -> Result<()> {
-        let writer = self.writer.clone();
+        let mut state = self.writer.clone().lock_owned().await;
         tokio::task::spawn_blocking(move || {
-            let mut state = writer
-                .lock()
-                .map_err(|_| anyhow::anyhow!("zip writer lock poisoned"))?;
             let zip = state.take().context("zip writer was not prepared")?;
             zip.finish()?;
             Ok::<_, anyhow::Error>(())

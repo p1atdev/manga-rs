@@ -166,15 +166,23 @@ impl MangaEpisode<Page> for Episode {
         }
     }
 
-    fn pages(&self) -> Vec<Page> {
+    fn pages(&self) -> &[Page] {
         match self {
             Episode::ReadableProduct { page_structure, .. } => {
                 if let Some(EpisodePageStructure { pages, .. }) = page_structure {
-                    pages.clone()
+                    pages
                 } else {
-                    Vec::new()
+                    &[]
                 }
             }
+        }
+    }
+
+    fn into_pages(self) -> Vec<Page> {
+        match self {
+            Episode::ReadableProduct { page_structure, .. } => page_structure
+                .map(|structure| structure.pages)
+                .unwrap_or_default(),
         }
     }
 }

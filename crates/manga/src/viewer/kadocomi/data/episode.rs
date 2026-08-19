@@ -45,8 +45,8 @@ impl Page {
         self.drm_mode.clone()
     }
 
-    pub fn encryption_key(&self) -> String {
-        self.drm_hash.clone()
+    pub fn encryption_key(&self) -> &str {
+        &self.drm_hash
     }
 }
 
@@ -109,7 +109,11 @@ impl MangaEpisode<Page> for Episode {
         None
     }
 
-    fn pages(&self) -> Vec<Page> {
-        self.pages.clone()
+    fn pages(&self) -> &[Page] {
+        &self.pages
+    }
+
+    fn into_pages(self) -> Vec<Page> {
+        self.pages
     }
 }

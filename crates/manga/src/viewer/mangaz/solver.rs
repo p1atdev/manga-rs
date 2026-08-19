@@ -1,8 +1,5 @@
-use std::sync::{Arc, Mutex};
-
 use anyhow::Result;
 use image::{DynamicImage, ImageBuffer, Rgb};
-use rayon::iter::{ParallelBridge, ParallelIterator};
 
 use super::data::{Crop, Scramble};
 use crate::{solver::ImageSolver, utils::Bytes};
@@ -33,7 +30,7 @@ impl From<Scramble> for Solver {
 impl Solver {
     fn move_region(
         &self,
-        canvas: &Arc<Mutex<ImageBuffer<Rgb<u8>, Vec<u8>>>>,
+        canvas: &mut ImageBuffer<Rgb<u8>, Vec<u8>>,
         source: &ImageBuffer<Rgb<u8>, Vec<u8>>,
         source_tl: (u32, u32), // source top left (x, y)
         target_tl: (u32, u32), // target top left (x, y)
@@ -41,34 +38,29 @@ impl Solver {
         height: u32,
     ) {
         // move source to canvas
-        (0..width)
-            .flat_map(|x| (0..height).map(move |y| (x, y)))
-            .par_bridge()
-            .for_each(|(x, y)| {
+        for x in 0..width {
+            for y in 0..height {
                 let source_x = source_tl.0 + x;
                 let source_y = source_tl.1 + y;
                 let target_x = target_tl.0 + x;
                 let target_y = target_tl.1 + y;
                 let source_pixel = source.get_pixel(source_x, source_y);
 
-                canvas
-                    .lock()
-                    .unwrap()
-                    .put_pixel(target_x, target_y, *source_pixel);
-            });
+                canvas.put_pixel(target_x, target_y, *source_pixel);
+            }
+        }
     }
 
     fn solve_buffer(
         &self,
         buffer: ImageBuffer<image::Rgb<u8>, Vec<u8>>,
     ) -> Result<image::ImageBuffer<image::Rgb<u8>, Vec<u8>>> {
-        let canvas = Arc::new(Mutex::new(
-            image::ImageBuffer::<image::Rgb<u8>, Vec<u8>>::new(self.width, self.height),
-        ));
+        let mut canvas =
+            image::ImageBuffer::<image::Rgb<u8>, Vec<u8>>::new(self.width, self.height);
 
-        self.crops.iter().par_bridge().for_each(|crop| {
+        self.crops.iter().for_each(|crop| {
             self.move_region(
-                &canvas,
+                &mut canvas,
                 &buffer,
                 (crop.scrambled_x, crop.scrambled_y),
                 (crop.original_x, crop.original_y),
@@ -77,12 +69,11 @@ impl Solver {
             )
         });
 
-        let canvas = Arc::try_unwrap(canvas).unwrap().into_inner().unwrap();
         Ok(canvas)
     }
 
     fn solve_image(&self, image: image::DynamicImage) -> Result<image::DynamicImage> {
-        let buffer = image.to_rgb8();
+        let buffer = image.into_rgb8();
         let solved_buffer = self.solve_buffer(buffer)?;
 
         Ok(image::DynamicImage::ImageRgb8(solved_buffer))
@@ -90,15 +81,17 @@ impl Solver {
 }
 
 impl ImageSolver for Solver {
-    fn solve<T: AsRef<[u8]>>(&self, bytes: T) -> Result<Bytes> {
-        let image = image::load_from_memory(bytes.as_ref())?;
+    fn solve(&self, bytes: Bytes) -> Result<Bytes> {
+        let image = image::load_from_memory(&bytes)?;
+        drop(bytes);
         let solved_image = self.solve_image(image)?;
 
-        Ok(solved_image.as_bytes().into())
+        Ok(solved_image.into_bytes())
     }
 
-    fn solve_from_bytes<B: AsRef<[u8]>>(&self, bytes: B) -> Result<DynamicImage> {
-        let image = image::load_from_memory(bytes.as_ref())?;
+    fn solve_from_bytes(&self, bytes: Bytes) -> Result<DynamicImage> {
+        let image = image::load_from_memory(&bytes)?;
+        drop(bytes);
         let solved_image = self.solve_image(image)?;
 
         Ok(solved_image)

@@ -30,8 +30,11 @@ pub trait MangaEpisode<P: MangaPage> {
     /// Get the title of the episode
     fn title(&self) -> Option<String>;
 
-    /// Get the pages of the episode
-    fn pages(&self) -> Vec<P>;
+    /// Borrow the pages of the episode.
+    fn pages(&self) -> &[P];
+
+    /// Consume the episode and return its pages without cloning them.
+    fn into_pages(self) -> Vec<P>;
 }
 
 /// A series is a collection of episodes

@@ -1,7 +1,10 @@
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use anyhow::{Context, Result};
-use futures::{StreamExt, TryStreamExt, stream};
+use futures::{StreamExt, stream};
 use url::Url;
 
 use crate::{
@@ -43,29 +46,61 @@ impl SeriesPipeline<Page, Episode> for Pipeline {
         url: &Url,
         path: &T,
     ) -> Result<(), PipelineError> {
-        let episode = self.client.get_episode_at(url.clone()).await?;
+        self.download_limits
+            .validate()
+            .map_err(|_| PipelineError::Unknown)?;
+        let episode = {
+            let connection_permit = self
+                .download_limits
+                .acquire_connection()
+                .await
+                .map_err(|_| PipelineError::Unknown)?;
+            let episode = self.client.get_episode_at(url.clone()).await?;
+            drop(connection_permit);
+            episode
+        };
         let title = episode.title().ok_or(PipelineError::Unknown)?;
         let writer = self.file_writer(path).map_err(|_| PipelineError::IoError)?;
-        self.download_pages(episode.pages(), writer, &title)
+        self.download_pages(episode.into_pages(), writer, &title)
             .await
             .map_err(|_| PipelineError::DownloadError)
     }
 
     async fn download_series<T: AsRef<Path>>(&self, url: &Url, directory: &T) -> Result<()> {
         let queue = self.get_episode_queue(url.clone()).await?;
+        self.download_limits.validate()?;
+        let cancelled = AtomicBool::new(false);
 
-        stream::iter(queue)
+        let processing_error = stream::iter(queue)
             .map(|item| {
-                let path = self
-                    .writer_config
-                    .output_path(directory, item.title())
-                    .map_err(|_| PipelineError::IoError)?;
-                Ok::<_, PipelineError>((item, path))
+                let cancelled = &cancelled;
+                async move {
+                    if cancelled.load(Ordering::Acquire) {
+                        return None;
+                    }
+                    let result = match self.writer_config.output_path(directory, item.title()) {
+                        Ok(path) => self.download_episode(item.url(), &path).await,
+                        Err(_) => Err(PipelineError::IoError),
+                    };
+                    if result.is_err() {
+                        cancelled.store(true, Ordering::Release);
+                    }
+                    Some(result)
+                }
             })
-            .map_ok(|(item, path)| async move { self.download_episode(item.url(), &path).await })
-            .try_buffer_unordered(self.num_connections)
-            .try_collect::<Vec<_>>()
-            .await?;
+            .buffer_unordered(self.download_limits.num_connections())
+            .fold(None, |first_error, result| {
+                let next_error = match result {
+                    Some(Err(error)) => first_error.or(Some(error)),
+                    Some(Ok(())) | None => first_error,
+                };
+                async move { next_error }
+            })
+            .await;
+
+        if let Some(error) = processing_error {
+            return Err(error.into());
+        }
 
         Ok(())
     }

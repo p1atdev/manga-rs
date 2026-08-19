@@ -174,7 +174,11 @@ impl MangaEpisode<Page> for Episode {
         Some(self.book.title.clone())
     }
 
-    fn pages(&self) -> Vec<Page> {
-        self.pages.clone()
+    fn pages(&self) -> &[Page] {
+        &self.pages
+    }
+
+    fn into_pages(self) -> Vec<Page> {
+        self.pages
     }
 }

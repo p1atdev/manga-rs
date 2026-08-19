@@ -1,7 +1,7 @@
 use url::Url;
 
 use crate::{
-    pipeline::{SaveFormat, WriterConfig},
+    pipeline::{DownloadLimits, SaveFormat, WriterConfig},
     progress::ProgressConfig,
     viewer::ViewerConfigBuilder,
 };
@@ -14,8 +14,7 @@ pub struct Pipeline {
     pub(crate) client: Client,
     pub(crate) progress: ProgressConfig,
     pub(crate) writer_config: WriterConfig,
-    pub(crate) num_threads: usize,
-    pub(crate) num_connections: usize,
+    pub(crate) download_limits: DownloadLimits,
 }
 
 impl Pipeline {
@@ -30,8 +29,7 @@ impl Pipeline {
             client: Client::new(ConfigBuilder::new(base_url).build()),
             progress,
             writer_config,
-            num_threads,
-            num_connections,
+            download_limits: DownloadLimits::new(num_threads, num_connections),
         }
     }
 
@@ -40,8 +38,7 @@ impl Pipeline {
             client: Client::new(ConfigBuilder::new(base_url).build()),
             progress: ProgressConfig::default(),
             writer_config: WriterConfig::new(SaveFormat::Raw, image::ImageFormat::Png),
-            num_threads: num_cpus::get(),
-            num_connections: 8,
+            download_limits: DownloadLimits::new(num_cpus::get(), 8),
         }
     }
 }

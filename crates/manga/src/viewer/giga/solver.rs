@@ -66,31 +66,27 @@ impl Solver {
 
     fn solve_buffer(
         &self,
-        buffer: image::ImageBuffer<image::Rgb<u8>, Vec<u8>>,
+        mut buffer: image::ImageBuffer<image::Rgb<u8>, Vec<u8>>,
     ) -> Result<image::ImageBuffer<image::Rgb<u8>, Vec<u8>>> {
         let (width, height) = buffer.dimensions();
 
         let cell_width = width / (self.num_cells * self.divisible_with) * self.divisible_with;
         let cell_height = height / (self.num_cells * self.divisible_with) * self.divisible_with;
 
-        let mut img = buffer.clone();
+        for i in 0..self.num_cells {
+            for j in i..self.num_cells {
+                let source = (i * cell_width, j * cell_height);
+                let target = (j * cell_width, i * cell_height);
 
-        let indices = (0..self.num_cells)
-            .flat_map(move |i| (i..self.num_cells).map(move |j| (i, j)))
-            .collect::<Vec<_>>();
+                self.swap_regions(&mut buffer, source, target, cell_width, cell_height);
+            }
+        }
 
-        indices.iter().for_each(|&(i, j)| {
-            let source = (i * cell_width, j * cell_height);
-            let target = (j * cell_width, i * cell_height);
-
-            self.swap_regions(&mut img, source, target, cell_width, cell_height);
-        });
-
-        Ok(img)
+        Ok(buffer)
     }
 
     fn solve_image(&self, image: image::DynamicImage) -> Result<image::DynamicImage> {
-        let buffer = image.to_rgb8();
+        let buffer = image.into_rgb8();
         let solved_buffer = self.solve_buffer(buffer)?;
 
         Ok(image::DynamicImage::ImageRgb8(solved_buffer))
@@ -98,15 +94,17 @@ impl Solver {
 }
 
 impl ImageSolver for Solver {
-    fn solve<T: AsRef<[u8]>>(&self, bytes: T) -> Result<Bytes> {
-        let image = image::load_from_memory(bytes.as_ref())?;
+    fn solve(&self, bytes: Bytes) -> Result<Bytes> {
+        let image = image::load_from_memory(&bytes)?;
+        drop(bytes);
         let solved_image = self.solve_image(image)?;
 
-        Ok(solved_image.as_bytes().into())
+        Ok(solved_image.into_bytes())
     }
 
-    fn solve_from_bytes<B: AsRef<[u8]>>(&self, bytes: B) -> Result<DynamicImage> {
-        let image = image::load_from_memory(bytes.as_ref())?;
+    fn solve_from_bytes(&self, bytes: Bytes) -> Result<DynamicImage> {
+        let image = image::load_from_memory(&bytes)?;
+        drop(bytes);
         let solved_image = self.solve_image(image)?;
 
         Ok(solved_image)
@@ -121,6 +119,11 @@ mod test {
     fn test_solve_sample_image() -> Result<()> {
         let solver = Solver::new();
         let original = image::ImageReader::open("./tests/assets/giga-original.jpg")?.decode()?;
+
+        let buffer = original.clone().into_rgb8();
+        let buffer_allocation = buffer.as_ptr();
+        let solved_buffer = solver.solve_buffer(buffer)?;
+        assert_eq!(solved_buffer.as_ptr(), buffer_allocation);
 
         let solved = solver.solve_image(original.clone())?;
         let restored = solver.solve_image(solved.clone())?;

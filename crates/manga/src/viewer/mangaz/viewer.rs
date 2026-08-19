@@ -104,12 +104,10 @@ impl ViewerClient<Config> for Client {
 
 impl Client {
     fn compose_episode_url(&self, episode_id: &str) -> Url {
-        let url = self
-            .config
+        self.config
             .viewer_url
             .join(&format!("/virgo/view/{}", episode_id))
-            .unwrap();
-        url
+            .unwrap()
     }
 
     fn decode_base64(&self, data: &str) -> Result<String> {

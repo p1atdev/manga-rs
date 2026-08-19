@@ -26,8 +26,8 @@ impl RawWriter {
 }
 
 impl EpisodeWriter for RawWriter {
-    fn save_path(&self) -> PathBuf {
-        self.save_path.clone()
+    fn save_path(&self) -> &Path {
+        &self.save_path
     }
 
     async fn prepare(&self) -> Result<()> {
@@ -38,7 +38,7 @@ impl EpisodeWriter for RawWriter {
 
     async fn write_page(&self, page: usize, image: image::DynamicImage) -> Result<()> {
         let image_name = format!("{page:04}.{}", self.image_format.extensions_str()[0]);
-        let save_path = self.save_path().join(image_name);
+        let save_path = self.save_path.join(image_name);
         let image_format = self.image_format;
 
         tokio::task::spawn_blocking(move || {

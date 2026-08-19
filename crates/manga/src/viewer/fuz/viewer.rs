@@ -129,8 +129,8 @@ impl Client {
     }
 
     /// Image url on CDN
-    pub fn image_url(&self, path: String) -> Result<Url> {
-        Ok(self.config.img_url.join(&path)?)
+    pub fn image_url(&self, path: &str) -> Result<Url> {
+        Ok(self.config.img_url.join(path)?)
     }
 
     /// Fetch with protobuf

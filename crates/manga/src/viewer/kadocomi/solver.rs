@@ -15,13 +15,12 @@ fn xor_encrypt(data: &mut [u8], key: &[u8]) {
 }
 
 fn hex_to_bytes(hex: &str) -> Result<[u8; 8]> {
-    let decoded = hex::decode(hex)?;
     ensure!(
-        decoded.len() == 8,
+        hex.len() == 16,
         "Kadokomi XOR key must contain exactly 8 bytes"
     );
     let mut bytes = [0u8; 8];
-    bytes.copy_from_slice(&decoded);
+    hex::decode_to_slice(hex, &mut bytes)?;
     Ok(bytes)
 }
 
@@ -31,22 +30,21 @@ impl Solver {
         Ok(Solver { xor_key: key_bytes })
     }
 
-    fn solve_buffer(&self, mut buffer: Vec<u8>) -> Vec<u8> {
+    fn solve_buffer(&self, mut buffer: Bytes) -> Bytes {
         xor_encrypt(&mut buffer, &self.xor_key);
         buffer
     }
 }
 
 impl ImageSolver for Solver {
-    fn solve<T: AsRef<[u8]>>(&self, bytes: T) -> Result<Bytes> {
-        let buffer = self.solve_buffer(bytes.as_ref().to_vec());
-
-        Ok(buffer)
+    fn solve(&self, bytes: Bytes) -> Result<Bytes> {
+        Ok(self.solve_buffer(bytes))
     }
 
-    fn solve_from_bytes<B: AsRef<[u8]>>(&self, bytes: B) -> Result<DynamicImage> {
-        let buffer = self.solve_buffer(bytes.as_ref().to_vec());
+    fn solve_from_bytes(&self, bytes: Bytes) -> Result<DynamicImage> {
+        let buffer = self.solve_buffer(bytes);
         let solved_image = image::load_from_memory(&buffer)?;
+        drop(buffer);
 
         Ok(solved_image)
     }
@@ -90,6 +88,22 @@ mod test {
 
         assert_eq!(answer.to_rgba8(), solved.to_rgba8());
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_solve_reuses_input_allocation() -> Result<()> {
+        let solver = Solver::from_hex("0123456789abcdef")?;
+        let encrypted = fs::read("./tests/assets/kadocomi-encrypted.webp")?;
+        let encrypted_allocation = encrypted.as_ptr();
+
+        let decrypted = solver.solve(encrypted)?;
+
+        assert_eq!(decrypted.as_ptr(), encrypted_allocation);
+        assert_eq!(
+            decrypted,
+            fs::read("./tests/assets/kadocomi-decrypted.webp")?
+        );
         Ok(())
     }
 }
