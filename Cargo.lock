@@ -1510,7 +1510,6 @@ dependencies = [
  "image",
  "indicatif",
  "num_cpus",
- "phf",
  "prost",
  "prost-build",
  "rayon",

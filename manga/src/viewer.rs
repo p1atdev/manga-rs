@@ -75,9 +75,3 @@ pub trait ViewerClient<V: ViewerConfig> {
         ClientError::from_status(status)
     }
 }
-
-pub trait ViewerWebsite<T> {
-    fn host(&self) -> &str;
-    fn base_url(&self) -> Url;
-    fn lookup(host: &str) -> Option<T>;
-}

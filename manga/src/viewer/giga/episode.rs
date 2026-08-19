@@ -12,24 +12,15 @@ use crate::{
     progress::ProgressConfig,
     solver::ImageSolver,
     utils::Bytes,
-    viewer::ViewerConfigBuilder,
 };
 
 use super::{
     data::{Episode, Page},
     pipeline::Pipeline,
     solver::Solver,
-    viewer::{Client, ConfigBuilder, Website},
 };
 
-impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for Pipeline {
-    fn set_website(self, website: Website) -> Self {
-        Self {
-            client: Client::new(ConfigBuilder::new(website).build()),
-            ..self
-        }
-    }
-
+impl EpisodePipelineBuilder for Pipeline {
     fn set_progress(self, progress: ProgressConfig) -> Self {
         Self { progress, ..self }
     }
@@ -121,7 +112,7 @@ mod live_tests {
     #[ignore = "accesses a live manga website"]
     async fn downloads_live_episode() -> Result<()> {
         let url = Url::parse("https://shonenjumpplus.com/episode/16457717013869519536")?;
-        Pipeline::default()
+        Pipeline::for_base_url(Url::parse("https://shonenjumpplus.com")?)
             .download(&url, &"tests/output/live-giga")
             .await
     }

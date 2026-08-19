@@ -18,7 +18,7 @@ use crate::{
 use super::{
     data::{Episode, Page},
     solver::Solver,
-    viewer::{Client, ConfigBuilder, Website},
+    viewer::{Client, ConfigBuilder},
 };
 
 #[derive(Debug, Clone)]
@@ -30,10 +30,28 @@ pub struct Pipeline {
     num_connections: usize,
 }
 
-impl Default for Pipeline {
-    fn default() -> Self {
+impl Pipeline {
+    pub fn new(
+        base_url: Url,
+        api_url: Url,
+        image_url: Url,
+        progress: ProgressConfig,
+        writer_config: WriterConfig,
+        num_threads: usize,
+        num_connections: usize,
+    ) -> Self {
         Self {
-            client: Client::new(ConfigBuilder::new(Website::ComicFuz).build()),
+            client: Client::new(ConfigBuilder::new(base_url, api_url, image_url).build()),
+            progress,
+            writer_config,
+            num_threads,
+            num_connections,
+        }
+    }
+
+    pub fn for_urls(base_url: Url, api_url: Url, image_url: Url) -> Self {
+        Self {
+            client: Client::new(ConfigBuilder::new(base_url, api_url, image_url).build()),
             progress: ProgressConfig::default(),
             writer_config: WriterConfig::new(SaveFormat::Raw, image::ImageFormat::Png),
             num_threads: num_cpus::get(),
@@ -42,14 +60,7 @@ impl Default for Pipeline {
     }
 }
 
-impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for Pipeline {
-    fn set_website(self, website: Website) -> Self {
-        Self {
-            client: Client::new(ConfigBuilder::new(website).build()),
-            ..self
-        }
-    }
-
+impl EpisodePipelineBuilder for Pipeline {
     fn set_progress(self, progress: ProgressConfig) -> Self {
         Self { progress, ..self }
     }
@@ -175,8 +186,12 @@ mod live_tests {
     #[ignore = "FUZ protobuf API is currently known to be unstable"]
     async fn downloads_live_episode() -> Result<()> {
         let url = Url::parse("https://comic-fuz.com/manga/viewer/44994")?;
-        Pipeline::default()
-            .download(&url, &"tests/output/live-fuz")
-            .await
+        Pipeline::for_urls(
+            Url::parse("https://comic-fuz.com")?,
+            Url::parse("https://api.comic-fuz.com")?,
+            Url::parse("https://img.comic-fuz.com")?,
+        )
+        .download(&url, &"tests/output/live-fuz")
+        .await
     }
 }

@@ -84,11 +84,8 @@ fn safe_file_name(title: &str) -> Result<String> {
     Ok(sanitized)
 }
 
-/// Pipeline configuration trait
-pub trait EpisodePipelineBuilder<W, A: MangaPage, B: MangaEpisode<A>, P: EpisodePipeline<A, B>>:
-    Default
-{
-    fn set_website(self, website: W) -> Self;
+/// Pipeline configuration trait.
+pub trait EpisodePipelineBuilder: Sized {
     fn set_progress(self, progress: ProgressConfig) -> Self;
     fn set_writer_config(self, writer_config: WriterConfig) -> Self;
     fn set_num_threads(self, num_threads: usize) -> Self;

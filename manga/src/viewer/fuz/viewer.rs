@@ -10,60 +10,13 @@ use url::Url;
 use crate::auth::EmptyAuth;
 use crate::error::ClientError;
 use crate::utils;
-use crate::viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder, ViewerWebsite};
+use crate::viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder};
 
 use super::data::{web_manga_viewer, Episode};
-
-/// ComicFuz website family
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Website {
-    ComicFuz,
-}
-
-static HOST_TO_WEBSITE: phf::Map<&str, Website> = phf::phf_map! {
-    "comic-fuz.com" => Website::ComicFuz,
-};
 
 /// Episode path pattern
 static EPISODE_PATH_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"/manga/viewer/(\d+)$"#).unwrap());
-
-impl ViewerWebsite<Website> for Website {
-    fn host(&self) -> &str {
-        match &self {
-            Website::ComicFuz => "comic-fuz.com",
-        }
-    }
-
-    fn base_url(&self) -> Url {
-        let url = match &self {
-            Website::ComicFuz => "https://comic-fuz.com",
-        };
-        Url::parse(url).unwrap()
-    }
-
-    fn lookup(host: &str) -> Option<Website> {
-        HOST_TO_WEBSITE.get(host).copied()
-    }
-}
-
-impl Website {
-    // gRPC API endpoint url
-    pub fn api_url(&self) -> Url {
-        let url = match &self {
-            Website::ComicFuz => "https://api.comic-fuz.com",
-        };
-        Url::parse(url).unwrap()
-    }
-
-    /// Image CDN URL
-    pub fn img_url(&self) -> Url {
-        let url = match &self {
-            Website::ComicFuz => "https://img.comic-fuz.com",
-        };
-        Url::parse(url).unwrap()
-    }
-}
 
 /// viewer config
 #[derive(Debug, Clone)]
@@ -97,37 +50,14 @@ pub struct ConfigBuilder {
     auth: Option<EmptyAuth>,
 }
 
-impl Default for ConfigBuilder {
-    /// comic-fuz.com default config
-    fn default() -> Self {
-        Self {
-            base_url: Website::ComicFuz.base_url(),
-            api_url: Website::ComicFuz.api_url(),
-            img_url: Website::ComicFuz.img_url(),
-            auth: None,
-        }
-    }
-}
-
 impl ConfigBuilder {
-    /// Create a new ConfigBuilder from preset
-    pub fn new(website: Website) -> Self {
+    pub fn new(base_url: Url, api_url: Url, img_url: Url) -> Self {
         Self {
-            base_url: website.base_url(),
-            api_url: website.api_url(),
-            img_url: website.img_url(),
+            base_url,
+            api_url,
+            img_url,
             auth: None,
         }
-    }
-
-    /// Create a new ConfigBuilder from custom url
-    pub fn custom(base_url: String, api_url: String, img_url: String) -> Result<Self> {
-        Ok(Self {
-            base_url: Url::parse(&base_url)?,
-            api_url: Url::parse(&api_url)?,
-            img_url: Url::parse(&img_url)?,
-            auth: None,
-        })
     }
 }
 

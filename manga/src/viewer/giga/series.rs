@@ -78,7 +78,7 @@ mod live_tests {
     #[tokio::test]
     #[ignore = "accesses a live manga website"]
     async fn reads_live_series_feed() -> Result<()> {
-        let pipeline = Pipeline::default();
+        let pipeline = Pipeline::for_base_url(Url::parse("https://shonenjumpplus.com")?);
         let url = Url::parse("https://shonenjumpplus.com/episode/3270375685341574016")?;
         assert!(!pipeline.get_episode_queue(url).await?.is_empty());
         Ok(())

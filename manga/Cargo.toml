@@ -32,7 +32,6 @@ indicatif = { version = "0.17.9", features = ["futures", "rayon", "tokio"] }
 zip = "2.2.1"
 num_cpus = "1.16.0"
 regex = "1.11.1"
-phf = { version = "0.11.2", features = ["macros"] }
 scraper = "0.22.0"
 
 # giga

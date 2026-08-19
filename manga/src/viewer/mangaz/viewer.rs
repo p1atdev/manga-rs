@@ -9,45 +9,7 @@ use crate::auth::EmptyAuth;
 use crate::error::ClientError;
 use crate::utils;
 use crate::viewer::mangaz::data::Episode;
-use crate::viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder, ViewerWebsite};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Website {
-    MangaZ,
-}
-
-static HOST_TO_WEBSITE: phf::Map<&str, Website> = phf::phf_map! {
-    "www.mangaz.com" => Website::MangaZ,
-    "vw.mangaz.com" => Website::MangaZ,
-};
-
-impl ViewerWebsite<Website> for Website {
-    fn host(&self) -> &str {
-        match self {
-            Website::MangaZ => "www.mangaz.com",
-        }
-    }
-
-    fn base_url(&self) -> Url {
-        let url = match self {
-            Website::MangaZ => "https://www.mangaz.com",
-        };
-        Url::parse(url).unwrap()
-    }
-
-    fn lookup(host: &str) -> Option<Website> {
-        HOST_TO_WEBSITE.get(host).copied()
-    }
-}
-
-impl Website {
-    pub fn viewer_url(&self) -> Url {
-        let url = match self {
-            Website::MangaZ => "https://vw.mangaz.com",
-        };
-        Url::parse(url).unwrap()
-    }
-}
+use crate::viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder};
 
 /// mangaz viewer config
 #[derive(Debug, Clone)]
@@ -79,31 +41,13 @@ pub struct ConfigBuilder {
     auth: Option<EmptyAuth>,
 }
 
-impl Default for ConfigBuilder {
-    fn default() -> Self {
-        Self {
-            base_url: Website::MangaZ.base_url(),
-            viewer_url: Website::MangaZ.viewer_url(),
-            auth: None,
-        }
-    }
-}
-
 impl ConfigBuilder {
-    pub fn new(website: Website) -> Self {
+    pub fn new(base_url: Url, viewer_url: Url) -> Self {
         Self {
-            base_url: website.base_url(),
-            viewer_url: website.viewer_url(),
+            base_url,
+            viewer_url,
             auth: None,
         }
-    }
-
-    pub fn custom(base_url: String, viewer_url: String) -> Result<Self> {
-        Ok(Self {
-            base_url: Url::parse(&base_url)?,
-            viewer_url: Url::parse(&viewer_url)?,
-            auth: None,
-        })
     }
 }
 
@@ -211,7 +155,11 @@ mod test {
         let episode_ids = ["211991", "139231", "65031"];
 
         for &episode_id in episode_ids.iter() {
-            let config = ConfigBuilder::new(Website::MangaZ).build();
+            let config = ConfigBuilder::new(
+                Url::parse("https://www.mangaz.com").unwrap(),
+                Url::parse("https://vw.mangaz.com").unwrap(),
+            )
+            .build();
             let client = Client::new(config);
             let episode = client.get_episode(episode_id).await.unwrap();
             assert_eq!(episode.id(), episode_id);

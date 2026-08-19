@@ -9,88 +9,10 @@ use crate::{
     feed::{FeedContent, FeedParser},
     http::HttpClient,
     utils::UserAgent,
-    viewer::{ViewerConfig, ViewerConfigBuilder, ViewerWebsite},
+    viewer::{ViewerConfig, ViewerConfigBuilder},
 };
 
 use super::data::{Episode, Gtm, GtmEpisode};
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Website {
-    ShonenJumpPlus,
-    TonarinoYJ,
-    MagaPocket,
-    ComicDays,
-    Kuragebunch,
-    ComicHeros,
-    ComicBorder,
-    ComicGardo,
-    ComicZenon,
-    Magcomi,
-    ComicAction,
-    ComicTrail,
-    ComicGrowl,
-    Feelweb,
-    SundayWebry,
-    ComicOgyaaa,
-    ComicEarthstar,
-    Ourfeel,
-    Custom(String),
-}
-
-static HOST_TO_WEBSITE: phf::Map<&str, Website> = phf::phf_map! {
-    "shonenjumpplus.com" => Website::ShonenJumpPlus,
-    "tonarinoyj.jp" => Website::TonarinoYJ,
-    "pocket.shonenmagazine.com" => Website::MagaPocket,
-    "comic-days.com" => Website::ComicDays,
-    "kuragebunch.com" => Website::Kuragebunch,
-    "viewer.heros-web.com" => Website::ComicHeros,
-    "comicborder.com" => Website::ComicBorder,
-    "comic-gardo.com" => Website::ComicGardo,
-    "comic-zenon.com" => Website::ComicZenon,
-    "magcomi.com" => Website::Magcomi,
-    "comic-action.com" => Website::ComicAction,
-    "comic-trail.com" => Website::ComicTrail,
-    "comic-growl.com" => Website::ComicGrowl,
-    "feelweb.jp" => Website::Feelweb,
-    "www.sunday-webry.com" => Website::SundayWebry,
-    "comic-ogyaaa.com" => Website::ComicOgyaaa,
-    "comic-earthstar.com" => Website::ComicEarthstar,
-    "ourfeel.jp" => Website::Ourfeel,
-};
-
-impl ViewerWebsite<Website> for Website {
-    fn host(&self) -> &str {
-        match self {
-            Website::ShonenJumpPlus => "shonenjumpplus.com",
-            Website::TonarinoYJ => "tonarinoyj.jp",
-            Website::MagaPocket => "pocket.shonenmagazine.com",
-            Website::ComicDays => "comic-days.com",
-            Website::Kuragebunch => "kuragebunch.com",
-            Website::ComicHeros => "viewer.heros-web.com",
-            Website::ComicBorder => "comicborder.com",
-            Website::ComicGardo => "comic-gardo.com",
-            Website::ComicZenon => "comic-zenon.com",
-            Website::Magcomi => "magcomi.com",
-            Website::ComicAction => "comic-action.com",
-            Website::ComicTrail => "comic-trail.com",
-            Website::ComicGrowl => "comic-growl.com",
-            Website::Feelweb => "feelweb.jp",
-            Website::SundayWebry => "www.sunday-webry.com",
-            Website::ComicOgyaaa => "comic-ogyaaa.com",
-            Website::ComicEarthstar => "comic-earthstar.com",
-            Website::Ourfeel => "ourfeel.jp",
-            Website::Custom(host) => host,
-        }
-    }
-
-    fn base_url(&self) -> Url {
-        Url::parse(&format!("https://{}", self.host())).expect("website hosts form valid URLs")
-    }
-
-    fn lookup(host: &str) -> Option<Website> {
-        HOST_TO_WEBSITE.get(host).cloned()
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -129,13 +51,7 @@ pub struct ConfigBuilder {
 }
 
 impl ConfigBuilder {
-    pub fn new(website: Website) -> Self {
-        Self {
-            base_url: website.base_url(),
-        }
-    }
-
-    pub fn custom(base_url: Url) -> Self {
+    pub fn new(base_url: Url) -> Self {
         Self { base_url }
     }
 }
@@ -238,7 +154,7 @@ mod tests {
     use super::*;
 
     fn config() -> Config {
-        ConfigBuilder::custom(Url::parse("http://localhost:4000/").unwrap()).build()
+        ConfigBuilder::new(Url::parse("http://localhost:4000/").unwrap()).build()
     }
 
     #[test]

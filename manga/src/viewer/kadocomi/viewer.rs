@@ -8,29 +8,10 @@ use crate::{
     error::ClientError,
     http::HttpClient,
     utils::{extract_next_data_json, UserAgent},
-    viewer::{ViewerConfig, ViewerConfigBuilder, ViewerWebsite},
+    viewer::{ViewerConfig, ViewerConfigBuilder},
 };
 
 use super::data::{episode::Episode, next::EpisodeNextData};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Website {
-    Kadokomi,
-}
-
-impl ViewerWebsite<Website> for Website {
-    fn host(&self) -> &str {
-        "comic-walker.com"
-    }
-
-    fn base_url(&self) -> Url {
-        Url::parse("https://comic-walker.com").expect("Kadokomi URL is valid")
-    }
-
-    fn lookup(host: &str) -> Option<Website> {
-        (host == "comic-walker.com").then_some(Website::Kadokomi)
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImageSize {
@@ -85,14 +66,7 @@ pub struct ConfigBuilder {
 }
 
 impl ConfigBuilder {
-    pub fn new(website: Website) -> Self {
-        Self {
-            base_url: website.base_url(),
-            image_size: ImageSize::Large,
-        }
-    }
-
-    pub fn custom(base_url: Url) -> Self {
+    pub fn new(base_url: Url) -> Self {
         Self {
             base_url,
             image_size: ImageSize::Large,
@@ -173,7 +147,7 @@ mod tests {
     use super::*;
 
     fn config() -> Config {
-        ConfigBuilder::custom(Url::parse("http://localhost:4000/").unwrap()).build()
+        ConfigBuilder::new(Url::parse("http://localhost:4000/").unwrap()).build()
     }
 
     #[test]
