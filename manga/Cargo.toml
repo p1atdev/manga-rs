@@ -9,15 +9,15 @@ path = "src/lib.rs"
 
 
 [features]
-default = ["giga", "fuz"]
+default = ["giga", "kadokomi"]
 
-giga = ["feed-rs"]
-fuz = ["prost", "prost-build", "aes", "hex", "cbc", "cipher"]
-pdf = ["pdf-writer", "flate2"]
+giga = ["dep:feed-rs"]
+kadokomi = ["dep:hex"]
+fuz = ["dep:prost", "dep:prost-build", "dep:aes", "dep:hex", "dep:cbc", "dep:cipher"]
+mangaz = []
 
 [dependencies]
 anyhow = "1.0.94"
-clap = { version = "4.5.23", features = ["derive"] }
 image = "0.25.5"
 reqwest = "0.12.9"
 serde = { version = "1.0.216", features = ["derive"] }
@@ -35,10 +35,6 @@ regex = "1.11.1"
 phf = { version = "0.11.2", features = ["macros"] }
 scraper = "0.22.0"
 
-# pdf
-pdf-writer = { version = "0.12.0", optional = true }
-flate2 = { version = "1.0.35", optional = true }
-
 # giga
 feed-rs = { version = "2.3.0", optional = true }
 
@@ -52,6 +48,3 @@ thiserror = "2.0.8"
 
 [build-dependencies]
 prost-build = { version = "0.13.4", optional = true }
-
-[profile.test]
-opt-level = 3

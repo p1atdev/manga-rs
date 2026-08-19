@@ -43,7 +43,7 @@ impl ViewerWebsite<Website> for Website {
     }
 
     fn lookup(host: &str) -> Option<Website> {
-        HOST_TO_WEBSITE.get(host).map(|w| *w)
+        HOST_TO_WEBSITE.get(host).copied()
     }
 }
 
@@ -78,12 +78,11 @@ impl ViewerConfig for Config {
         let mut headers = HeaderMap::new();
         headers.insert(
             header::USER_AGENT,
-            HeaderValue::from_str(&utils::UserAgent::Bot.value())
-                .map_err(|_| ClientError::InvalidHeader)?,
+            HeaderValue::from_static(utils::UserAgent::Bot.value()),
         );
         headers.insert(
             header::REFERER,
-            HeaderValue::from_str(&self.base_url.to_string())
+            HeaderValue::from_str(self.base_url.as_ref())
                 .map_err(|_| ClientError::InvalidHeader)?,
         );
         Ok(headers)
@@ -98,9 +97,9 @@ pub struct ConfigBuilder {
     auth: Option<EmptyAuth>,
 }
 
-impl ConfigBuilder {
+impl Default for ConfigBuilder {
     /// comic-fuz.com default config
-    pub fn default() -> Self {
+    fn default() -> Self {
         Self {
             base_url: Website::ComicFuz.base_url(),
             api_url: Website::ComicFuz.api_url(),
@@ -108,7 +107,9 @@ impl ConfigBuilder {
             auth: None,
         }
     }
+}
 
+impl ConfigBuilder {
     /// Create a new ConfigBuilder from preset
     pub fn new(website: Website) -> Self {
         Self {
@@ -242,108 +243,5 @@ impl Client {
             .map_err(|_| ClientError::RequestError)?;
         let episode = Episode::from(res);
         Ok(episode)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::sync::Arc;
-
-    use anyhow::bail;
-    use futures::{StreamExt, TryStreamExt};
-    use indicatif::ParallelProgressIterator;
-    use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
-
-    use crate::{
-        data::{MangaEpisode, MangaPage},
-        progress::ProgressConfig,
-        solver::ImageSolver,
-        viewer::fuz::{data::Page, solver::Solver},
-    };
-
-    use super::*;
-
-    #[tokio::test]
-    async fn test_fetch_protobuf() -> Result<()> {
-        let chapter_ids = vec!["2443", "36429", "45054", "57443"];
-
-        let config = ConfigBuilder::default().build();
-        let client = Client::new(config);
-
-        for chapter_id in chapter_ids {
-            let res = client.get_episode(chapter_id).await?;
-            println!("{:?}", res);
-        }
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_fetch_and_solve() -> Result<()> {
-        let chapter_id = "2443";
-
-        let progress = ProgressConfig::default();
-        let config = ConfigBuilder::default().build();
-        let client = Arc::new(Client::new(config));
-        let episode = client.get_episode(chapter_id).await?;
-
-        let pages = episode
-            .pages()
-            .into_par_iter()
-            .filter(|page| page.is_image())
-            .collect::<Vec<_>>();
-
-        println!("Downloading {} pages", pages.len());
-
-        let pages = progress
-            .build(pages.len())?
-            .wrap_stream(futures::stream::iter(pages))
-            .map(|page| {
-                let client = client.clone();
-                async move {
-                    let url = client.image_url(page.image_path()?)?;
-                    let res = client.get(url).await?;
-                    let bytes = res.bytes().await?;
-                    Result::<_>::Ok((bytes, page))
-                }
-            })
-            .buffer_unordered(4)
-            .try_collect::<Vec<_>>()
-            .await?;
-
-        println!("Solving {} pages", pages.len());
-
-        let images = pages
-            .par_iter()
-            .progress_with(progress.build(pages.len())?)
-            .map(|(bytes, page)| {
-                if let Page::Image(img) = page {
-                    println!("Solving page {}", page.index()?);
-                    println!("page: {:?}", page);
-                    let solver = Solver::new(img.encryption_key(), img.encryption_iv());
-                    let image = solver.solve(bytes)?;
-                    Result::<_>::Ok((image, page.index()?))
-                } else {
-                    bail!("Page is not an image")
-                }
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        println!("Saving {} pages", images.len());
-
-        tokio::fs::create_dir_all("tests/output/fuz_solve").await?;
-        progress
-            .build(images.len())?
-            .wrap_stream(futures::stream::iter(images))
-            .map(|(image, index)| async move {
-                tokio::fs::write(format!("tests/output/fuz_solve/{}.jpg", index), image)
-                    .await
-                    .unwrap();
-            })
-            .buffer_unordered(16)
-            .collect::<Vec<_>>()
-            .await;
-
-        Ok(())
     }
 }

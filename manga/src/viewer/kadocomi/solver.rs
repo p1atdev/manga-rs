@@ -1,5 +1,5 @@
-use anyhow::Result;
-use image::{DynamicImage, ImageBuffer, Rgb, RgbaImage};
+use anyhow::{ensure, Result};
+use image::DynamicImage;
 
 use crate::{solver::ImageSolver, utils::Bytes};
 
@@ -15,19 +15,17 @@ fn xor_encrypt(data: &mut [u8], key: &[u8]) {
 }
 
 fn hex_to_bytes(hex: &str) -> Result<[u8; 8]> {
-    let _bytes = hex::decode(hex)?;
+    let decoded = hex::decode(hex)?;
+    ensure!(
+        decoded.len() == 8,
+        "Kadokomi XOR key must contain exactly 8 bytes"
+    );
     let mut bytes = [0u8; 8];
-    bytes.copy_from_slice(&_bytes[..8]);
+    bytes.copy_from_slice(&decoded);
     Ok(bytes)
 }
 
 impl Solver {
-    fn new(xor_key: &[u8; 8]) -> Self {
-        Solver {
-            xor_key: xor_key.clone(),
-        }
-    }
-
     pub fn from_hex(xor_key: &str) -> Result<Self> {
         let key_bytes = hex_to_bytes(xor_key)?;
         Ok(Solver { xor_key: key_bytes })
@@ -56,17 +54,15 @@ impl ImageSolver for Solver {
 
 #[cfg(test)]
 mod test {
-    use std::{
-        fs::File,
-        io::{Read, Write},
-    };
+    use std::fs;
 
     use super::*;
 
     #[test]
     fn test_new_solver() -> Result<()> {
         let key = "0123456789abcdef";
-        let _solver = Solver::from_hex(key);
+        Solver::from_hex(key)?;
+        assert!(Solver::from_hex("00").is_err());
 
         Ok(())
     }
@@ -74,42 +70,23 @@ mod test {
     #[test]
     fn test_xor_encrypt_decrypt() -> Result<()> {
         let key = hex_to_bytes("0123456789abcdef")?;
-        let image_path = "./tests/assets/kadocomi-decrypted.webp";
-        let encrypt_path = "./tests/output/kadocomi-encrypted.webp";
-
-        let mut buffer = File::open(image_path)?
-            .bytes()
-            .collect::<Result<Vec<_>, _>>()?;
+        let original = fs::read("./tests/assets/kadocomi-decrypted.webp")?;
+        let mut buffer = original.clone();
 
         xor_encrypt(&mut buffer, &key);
-
-        // write
-        let mut output = File::create(encrypt_path)?;
-        output.write_all(&buffer)?;
-
-        // read and decrypt
-        let mut buffer = File::open(encrypt_path)?
-            .bytes()
-            .collect::<Result<Vec<_>, _>>()?;
         xor_encrypt(&mut buffer, &key);
 
+        assert_eq!(buffer, original);
         Ok(())
     }
 
     #[test]
     fn test_solve_image() -> Result<()> {
         let solver = Solver::from_hex("0123456789abcdef")?;
-        let image_path = "./tests/assets/kadocomi-encrypted.webp";
-        let buffer = File::open(image_path)?
-            .bytes()
-            .collect::<Result<Vec<_>, _>>()?;
+        let buffer = fs::read("./tests/assets/kadocomi-encrypted.webp")?;
 
         let solved = solver.solve_from_bytes(buffer)?;
-        solved.save("./tests/output/kadocomi-solved.webp")?;
-
-        // answer
         let answer = image::open("./tests/assets/kadocomi-decrypted.webp")?;
-        let solved = image::open("./tests/output/kadocomi-solved.webp")?;
 
         assert_eq!(answer.to_rgba8(), solved.to_rgba8());
 

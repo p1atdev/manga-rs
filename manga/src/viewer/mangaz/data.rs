@@ -1,10 +1,7 @@
 use std::collections::HashMap;
-use std::fmt;
 
-use anyhow::{bail, Result};
-use chrono::{format, DateTime, Utc};
-use serde::de::{SeqAccess, Visitor};
-use serde::{Deserialize, Deserializer, Serialize};
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::data::{IndexNumber, MangaEpisode, MangaPage};

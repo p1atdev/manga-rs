@@ -21,6 +21,12 @@ impl Solver {
     }
 }
 
+impl Default for Solver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Solver {
     /// transforms tiles like below:
     /// ```md
@@ -50,7 +56,7 @@ impl Solver {
         (0..cell_width)
             .flat_map(move |x| (0..cell_height).map(move |y| (x, y)))
             .for_each(|(x, y)| {
-                let source_pixel = img.get_pixel(source_x + x, source_y + y).clone();
+                let source_pixel = *img.get_pixel(source_x + x, source_y + y);
                 let target_pixel = img.get_pixel(target_x + x, target_y + y);
 
                 img.put_pixel(source_x + x, source_y + y, *target_pixel);
@@ -114,11 +120,13 @@ mod test {
     #[test]
     fn test_solve_sample_image() -> Result<()> {
         let solver = Solver::new();
-        let img = image::ImageReader::open("./tests/assets/giga-original.jpg")?.decode()?;
+        let original = image::ImageReader::open("./tests/assets/giga-original.jpg")?.decode()?;
 
-        let solved = solver.solve_image(img)?;
-        solved.save("./tests/output/giga-solved.jpg")?;
+        let solved = solver.solve_image(original.clone())?;
+        let restored = solver.solve_image(solved.clone())?;
 
+        assert_ne!(solved.to_rgb8(), original.to_rgb8());
+        assert_eq!(restored.to_rgb8(), original.to_rgb8());
         Ok(())
     }
 }

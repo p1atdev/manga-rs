@@ -17,7 +17,7 @@ impl ProgressConfig {
         }
     }
 
-    pub fn default() -> Self {
+    fn enabled() -> Self {
         ProgressConfig {
             is_enabled: true,
             template:
@@ -72,5 +72,11 @@ impl ProgressConfig {
         pb.set_message(message);
 
         Ok(pb)
+    }
+}
+
+impl Default for ProgressConfig {
+    fn default() -> Self {
+        Self::enabled()
     }
 }

@@ -1,6 +1,10 @@
 # manga-rs
 
-wip
+An experimental Rust downloader for manga published through official web viewers.
+
+The CLI inspects the episode page and detects its viewer implementation from the
+HTML structure. It does not require the website's domain to be registered in
+advance, so compatible viewers hosted on other domains can also be handled.
 
 ## Installation
 
@@ -16,6 +20,7 @@ Usage: manga <COMMAND>
 
 Commands:
   episode
+  series
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -47,7 +52,7 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
 
 ## Supported Websites
 
-- [x] [ChojuGiga Viewer](https://hatena.co.jp/solutions/gigaviewer) family: Episode and Series download are supported
+- [x] [ChojuGiga Viewer](https://hatena.co.jp/solutions/gigaviewer) family: episode and series downloads are supported
   - [Shonen Jump Plus](https://shonenjumpplus.com)
   - [Tonari no Young Jump](https://tonarinoyj.jp)
   - [Shonen Jump Magazine Pocket](https://pocket.shonenmagazine.com)
@@ -66,8 +71,19 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
   - [Comic Ogyaaa](https://comic-ogyaaa.com)
   - [Comic Earthstar](https://comic-earthstar.com)
   - [Ourfeel](https://ourfeel.jp)
-- [x] [Comic FUZ](https://comic-fuz.com): Episode download is supported
-- [ ] ~~[Manga Library Z](https://www.mangaz.com)~~ (Service has been discontinued)
-- [ ] [Ichijin Plus](https://ichijin-plus.com)
-- [x] [Kadokomi (former ComicWalker)](https://comic-walker.com): Episode download is supported
+  - [Ichijin Plus](https://ichijin-plus.com) (now detected as a GigaViewer-compatible site)
+- [x] [Kadokomi (former ComicWalker)](https://comic-walker.com): episode download is supported
+- [ ] [Comic FUZ](https://comic-fuz.com): deferred because its protobuf API is currently unstable; library code is available behind the `fuz` feature
+- [ ] [Manga Library Z](https://www.mangaz.com): deferred; library code is available behind the `mangaz` feature
 - [ ] [Piccoma](https://piccoma.com)
+
+## Architecture
+
+- `cli`: detects the viewer and dispatches to the matching download pipeline.
+- `manga/src/viewer`: viewer-specific page parsing, API access, and image solving.
+- `manga/src/pipeline.rs`: shared concurrent fetch, solve, and write orchestration.
+- `manga/src/io`: raw-directory and ZIP/CBZ writers.
+
+The `manga` crate enables `giga` and `kadokomi` by default. Live-site smoke tests
+are ignored during normal test runs; fixture-based parsing and image-processing
+tests run offline.

@@ -1,10 +1,7 @@
-use std::{
-    rc::Rc,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use image::{buffer, DynamicImage, ImageBuffer, Rgb};
+use image::{DynamicImage, ImageBuffer, Rgb};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
 use super::data::{Crop, Scramble};
@@ -45,12 +42,7 @@ impl Solver {
     ) {
         // move source to canvas
         (0..width)
-            .flat_map(|x| {
-                (0..height).map(move |y| {
-                    return (x, y);
-                })
-            })
-            .into_iter()
+            .flat_map(|x| (0..height).map(move |y| (x, y)))
             .par_bridge()
             .for_each(|(x, y)| {
                 let source_x = source_tl.0 + x;
@@ -62,7 +54,7 @@ impl Solver {
                 canvas
                     .lock()
                     .unwrap()
-                    .put_pixel(target_x, target_y, source_pixel.clone());
+                    .put_pixel(target_x, target_y, *source_pixel);
             });
     }
 
@@ -253,10 +245,11 @@ mod test {
                 },
             ],
         );
-        let img = image::ImageReader::open("./tests/assets/mangaz-scrambled2.jpg")?.decode()?;
+        let img = image::ImageReader::open("./tests/assets/mangaz-scrambled.jpg")?.decode()?;
 
         let solved = solver.solve_image(img)?;
-        solved.save("./tests/output/mangaz-solved.jpg")?;
+        assert_eq!(solved.width(), 1190);
+        assert_eq!(solved.height(), 1684);
 
         Ok(())
     }

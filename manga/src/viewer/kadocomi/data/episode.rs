@@ -64,18 +64,9 @@ impl<'de> Visitor<'de> for PageVisitor {
         A: SeqAccess<'de>,
     {
         let mut pages = Vec::new();
-        let mut index = 0;
-        while let Some(page) = seq.next_element::<Page>()? {
-            pages.push(Page {
-                drm_mode: page.drm_mode,
-                drm_hash: page.drm_hash,
-                drm_image_url: page.drm_image_url,
-                page: page.page,
-                width: page.width,
-                height: page.height,
-                index: index,
-            });
-            index += 1;
+        while let Some(mut page) = seq.next_element::<Page>()? {
+            page.index = pages.len();
+            pages.push(page);
         }
         Ok(pages)
     }

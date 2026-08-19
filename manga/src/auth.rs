@@ -34,7 +34,7 @@ impl Auth for BasicAuth {
     fn get_header_value(&self) -> Result<HeaderValue> {
         let value = format!(
             "Basic {}",
-            STANDARD.encode(&format!("{}:{}", self.username, self.password))
+            STANDARD.encode(format!("{}:{}", self.username, self.password))
         );
         Ok(HeaderValue::from_str(&value)?)
     }

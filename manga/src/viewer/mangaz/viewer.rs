@@ -1,8 +1,5 @@
-use std::sync::LazyLock;
-
 use anyhow::{anyhow, bail, Result};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use regex::Regex;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::Response;
 use scraper::{Html, Selector};
@@ -24,12 +21,6 @@ static HOST_TO_WEBSITE: phf::Map<&str, Website> = phf::phf_map! {
     "vw.mangaz.com" => Website::MangaZ,
 };
 
-/// Episode path pattern
-/// - https://vw.mangaz.com/virgo/view/<episode-id>/i:<index>
-/// - https://vw.mangaz.com/navi/<episode-id>
-static EPISODE_PATH_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"/(navi|virgo/view)/(\d+)"#).unwrap());
-
 impl ViewerWebsite<Website> for Website {
     fn host(&self) -> &str {
         match self {
@@ -45,16 +36,16 @@ impl ViewerWebsite<Website> for Website {
     }
 
     fn lookup(host: &str) -> Option<Website> {
-        HOST_TO_WEBSITE.get(host).map(|w| *w)
+        HOST_TO_WEBSITE.get(host).copied()
     }
 }
 
 impl Website {
     pub fn viewer_url(&self) -> Url {
         let url = match self {
-            Website::MangaZ => format!("https://vw.mangaz.com"),
+            Website::MangaZ => "https://vw.mangaz.com",
         };
-        Url::parse(&url).unwrap()
+        Url::parse(url).unwrap()
     }
 }
 
@@ -70,12 +61,11 @@ impl ViewerConfig for Config {
         let mut headers = HeaderMap::new();
         headers.insert(
             header::USER_AGENT,
-            HeaderValue::from_str(&utils::UserAgent::Bot.value())
-                .map_err(|_| ClientError::InvalidHeader)?,
+            HeaderValue::from_static(utils::UserAgent::Bot.value()),
         );
         headers.insert(
             header::REFERER,
-            HeaderValue::from_str(&self.base_url.to_string())
+            HeaderValue::from_str(self.base_url.as_ref())
                 .map_err(|_| ClientError::InvalidHeader)?,
         );
         Ok(headers)
@@ -169,14 +159,6 @@ impl ViewerClient<Config> for Client {
 }
 
 impl Client {
-    /// Parse episode id from url
-    fn parse_episode_id(&self, url: &Url) -> Option<String> {
-        let path = url.path();
-        let captures = EPISODE_PATH_PATTERN.captures(path)?;
-        // 1: prefix, 2: episode id, 3: page index
-        captures.get(2).map(|m| m.as_str().to_string())
-    }
-
     fn compose_episode_url(&self, episode_id: &str) -> Url {
         let url = self
             .config
@@ -224,8 +206,9 @@ mod test {
     use crate::data::{MangaEpisode, MangaPage};
 
     #[tokio::test]
+    #[ignore = "MangaZ support is deferred and accesses a live website"]
     async fn test_get_episode() {
-        let episode_ids = vec!["211991", "139231", "65031"];
+        let episode_ids = ["211991", "139231", "65031"];
 
         for &episode_id in episode_ids.iter() {
             let config = ConfigBuilder::new(Website::MangaZ).build();
@@ -240,7 +223,7 @@ mod test {
 
             for p in page {
                 let index = p.index().unwrap();
-                let url = p.image_url(&base_url, &verkey).unwrap();
+                let url = p.image_url(&base_url, verkey).unwrap();
                 println!("{}: {}", index, url);
                 // println!("{:?}", p.scramble);
             }

@@ -1,20 +1,18 @@
+use std::{path::Path, sync::Arc};
+
 use anyhow::{Context, Result};
-use futures::{stream, StreamExt, TryStreamExt};
 use image::DynamicImage;
-use std::{path::Path, sync::Arc, usize};
 use url::Url;
 
-#[cfg(feature = "pdf")]
-use crate::io::pdf::PdfWriter;
 use crate::{
     data::MangaEpisode,
     error::ClientError,
     io::FileWriter,
-    pipeline::{EpisodePipeline, EpisodePipelineBuilder, SaveFormat, WriterConifg},
+    pipeline::{EpisodePipeline, EpisodePipelineBuilder, WriterConfig},
     progress::ProgressConfig,
     solver::ImageSolver,
     utils::Bytes,
-    viewer::{ViewerClient, ViewerConfigBuilder},
+    viewer::ViewerConfigBuilder,
 };
 
 use super::{
@@ -26,15 +24,17 @@ use super::{
 
 impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for Pipeline {
     fn set_website(self, website: Website) -> Self {
-        let client = Client::new(ConfigBuilder::new(website).build());
-        Self { client, ..self }
+        Self {
+            client: Client::new(ConfigBuilder::new(website).build()),
+            ..self
+        }
     }
 
     fn set_progress(self, progress: ProgressConfig) -> Self {
         Self { progress, ..self }
     }
 
-    fn set_writer_config(self, writer_config: WriterConifg) -> Self {
+    fn set_writer_config(self, writer_config: WriterConfig) -> Self {
         Self {
             writer_config,
             ..self
@@ -62,33 +62,29 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
     }
 
     async fn fetch_image(&self, page: &Page) -> Result<Bytes, ClientError> {
-        let client = self.client.clone();
-
-        let url = page.url().map_err(|_| ClientError::InvalidPage)?;
-        let res = client.get(url).await?;
-        let bytes = res.bytes().await.map_err(|_| ClientError::DecodeError)?;
-
-        Ok(bytes.into())
+        let response = self
+            .client
+            .get(page.url().map_err(|_| ClientError::InvalidPage)?)
+            .await?;
+        response
+            .bytes()
+            .await
+            .map(Into::into)
+            .map_err(|_| ClientError::DecodeError)
     }
 
     async fn solve_image_bytes(&self, image: Bytes, page: Option<Page>) -> Result<Bytes> {
-        let page = page.context("Page is required to solve image")?;
-
+        let page = page.context("page is required to solve a Kadokomi image")?;
         tokio::task::spawn_blocking(move || {
-            let solver = Arc::new(Solver::from_hex(&page.encryption_key())?);
-            let image = solver.solve(image)?;
-            Ok(image)
+            Arc::new(Solver::from_hex(&page.encryption_key())?).solve(image)
         })
         .await?
     }
 
     async fn solve_image(&self, image: Bytes, page: Option<Page>) -> Result<DynamicImage> {
-        let page = page.context("Page is required to solve image")?;
-
+        let page = page.context("page is required to solve a Kadokomi image")?;
         tokio::task::spawn_blocking(move || {
-            let solver = Arc::new(Solver::from_hex(&page.encryption_key())?);
-            let image = solver.solve_from_bytes(image)?;
-            Ok(image)
+            Arc::new(Solver::from_hex(&page.encryption_key())?).solve_from_bytes(image)
         })
         .await?
     }
@@ -97,139 +93,46 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         FileWriter::new(&self.writer_config, save_path)
     }
 
-    /// Download an episode to the specified path
-    async fn download<P: AsRef<Path>>(&self, url: &Url, path: &P) -> Result<()> {
-        let next_data = self.client.get_next_data(url.clone()).await?;
-        let episode_id = next_data.episode_id()?;
-
-        let episode = self.fetch_episode(&episode_id).await?;
-        let writer = self.file_writer(&path)?;
-        writer.prepare().await?;
-
-        let pages = episode.pages();
-        let progress = self.progress.build_with_message(
-            pages.len(),
-            format!(
-                "Downloading {}...",
-                episode.title().unwrap_or("Unknown episode".to_string())
-            ),
-        )?;
-
-        stream::iter(pages)
-            .enumerate()
-            .map(|(i, page)| async move { Ok((i, self.fetch_image(&page).await?, page)) })
-            .buffer_unordered(self.num_connections)
-            .map_ok(|(i, image, page)| async move {
-                Ok((i, self.solve_image(image, Some(page)).await?))
-            })
-            .try_buffer_unordered(self.num_threads)
-            .map_ok(|(i, image)| {
-                let writer = writer.clone();
-                async move { Ok((i, self.write(&writer, i, image).await?)) }
-            })
-            .try_buffer_unordered(self.num_threads)
-            .map_ok(|_| {
-                progress.inc(1);
-                async move { anyhow::Ok(()) }
-            })
-            .try_buffered(self.num_threads)
-            .try_collect::<Vec<_>>()
-            .await?;
-
-        progress.finish();
-
-        Ok(())
+    fn progress(&self) -> &ProgressConfig {
+        &self.progress
     }
 
-    /// Download an episode into the specified directory
-    async fn download_in<T: AsRef<Path>>(&self, url: &Url, dir: &T) -> Result<()> {
+    fn num_threads(&self) -> usize {
+        self.num_threads
+    }
+
+    fn num_connections(&self) -> usize {
+        self.num_connections
+    }
+
+    async fn download<P: AsRef<Path>>(&self, url: &Url, path: &P) -> Result<()> {
         let next_data = self.client.get_next_data(url.clone()).await?;
-        let episode_id = next_data.episode_id()?;
-
-        let episode = self.fetch_episode(&episode_id).await?;
+        let episode = self.fetch_episode(&next_data.episode_id()?).await?;
         let title = next_data.episode_title()?;
+        let writer = self.file_writer(path)?;
+        self.download_pages(episode.pages(), writer, &title).await
+    }
 
-        let mut path = dir.as_ref().join(title);
-        match self.writer_config.save_format() {
-            SaveFormat::Raw => {} // Do nothing
-            SaveFormat::Zip { .. } => {
-                path.set_extension("zip");
-            }
-            #[cfg(feature = "pdf")]
-            SaveFormat::Pdf => {
-                path.set_extension("pdf");
-            }
-        }
+    async fn download_in<P: AsRef<Path>>(&self, url: &Url, directory: &P) -> Result<()> {
+        let next_data = self.client.get_next_data(url.clone()).await?;
+        let episode = self.fetch_episode(&next_data.episode_id()?).await?;
+        let title = next_data.episode_title()?;
+        let path = self.writer_config.output_path(directory, &title)?;
         let writer = self.file_writer(&path)?;
-        writer.prepare().await?;
-
-        let pages = episode.pages();
-        let progress = self.progress.build_with_message(
-            pages.len(),
-            format!(
-                "Downloading {}...",
-                episode.title().unwrap_or("Unknown episode".to_string())
-            ),
-        )?;
-
-        stream::iter(pages)
-            .enumerate()
-            .map(|(i, page)| async move { Ok((i, self.fetch_image(&page).await?, page)) })
-            .buffer_unordered(self.num_connections)
-            .map_ok(|(i, image, page)| async move {
-                Ok((i, self.solve_image(image, Some(page)).await?))
-            })
-            .try_buffer_unordered(self.num_threads)
-            .map_ok(|(i, image)| {
-                let writer = writer.clone();
-                async move { Ok((i, self.write(&writer, i, image).await?)) }
-            })
-            .try_buffer_unordered(self.num_threads)
-            .map_ok(|_| {
-                progress.inc(1);
-                async move { anyhow::Ok(()) }
-            })
-            .try_buffered(self.num_threads)
-            .try_collect::<Vec<_>>()
-            .await?;
-
-        progress.finish();
-
-        Ok(())
+        self.download_pages(episode.pages(), writer, &title).await
     }
 }
 
 #[cfg(test)]
-mod test {
-
-    use anyhow::Ok;
-
+mod live_tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_get_api_contents_viewer() -> Result<()> {
+    #[ignore = "accesses a live manga website"]
+    async fn downloads_live_episode() -> Result<()> {
         let url = Url::parse("https://comic-walker.com/detail/KC_000735_S?episodeType=first")?;
-
-        let pipe = Pipeline::default();
-
-        let next_data = pipe.client.get_next_data(url.clone()).await?;
-        let episode_id = next_data.episode_id()?;
-
-        let _episode = pipe.fetch_episode(&episode_id).await?;
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_download_raw() -> Result<()> {
-        let url = Url::parse("https://comic-walker.com/detail/KC_000735_S?episodeType=first")?;
-        let path = "tests/output/kadocomi_pipe_raw";
-
-        let pipe = Pipeline::default()
-            .set_writer_config(WriterConifg::new(SaveFormat::Raw, image::ImageFormat::WebP));
-
-        pipe.download(&url, &path).await?;
-
-        Ok(())
+        Pipeline::default()
+            .download(&url, &"tests/output/live-kadokomi")
+            .await
     }
 }

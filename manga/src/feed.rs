@@ -69,12 +69,12 @@ impl FeedLink {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct FeedParser {}
 
 impl FeedParser {
     pub fn new() -> Self {
-        FeedParser {}
+        Self::default()
     }
 
     pub fn parse<T: AsRef<[u8]>>(&self, buffer: &T) -> Result<FeedContent> {

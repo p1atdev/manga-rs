@@ -73,6 +73,14 @@ impl ImagePage {
     pub fn encryption_iv(&self) -> &str {
         &self.encryption_iv
     }
+
+    pub fn width(&self) -> u32 {
+        self.image_width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.image_height
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -80,6 +88,20 @@ pub struct ExtraPage {
     id: u32,
     index: IndexNumber,
     slot_id: u32,
+}
+
+impl ExtraPage {
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+
+    pub fn index(&self) -> &IndexNumber {
+        &self.index
+    }
+
+    pub fn slot_id(&self) -> u32 {
+        self.slot_id
+    }
 }
 
 impl Page {
@@ -125,10 +147,7 @@ impl MangaPage for Page {
     }
 
     fn is_image(&self) -> bool {
-        match self {
-            Page::Image(_) => true,
-            _ => false,
-        }
+        matches!(self, Page::Image(_))
     }
 }
 
@@ -176,7 +195,7 @@ impl From<WebMangaViewerResponse> for Episode {
             index: IndexNumber::Int(index),
             title: chapter.chapter_main_name.clone(),
             pages: pages.clone(),
-            scroll_direction: scroll_direction,
+            scroll_direction,
         }
     }
 }
@@ -196,5 +215,11 @@ impl MangaEpisode<Page> for Episode {
 
     fn pages(&self) -> Vec<Page> {
         self.pages.clone()
+    }
+}
+
+impl Episode {
+    pub fn scroll_direction(&self) -> ScrollDirection {
+        self.scroll_direction
     }
 }

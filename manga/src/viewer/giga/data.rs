@@ -46,18 +46,11 @@ impl<'de> Visitor<'de> for PageVisitor {
     {
         let mut pages = Vec::new();
         let mut index = 0;
-        while let Some(mut page) = seq.next_element::<Page>()? {
-            match page {
-                Page::Image(ref mut image_page) => {
-                    pages.push(Page::Image(ImagePage {
-                        height: image_page.height,
-                        width: image_page.width,
-                        url: image_page.url.clone(),
-                        index: index,
-                    }));
-                    index += 1;
-                }
-                _ => {}
+        while let Some(page) = seq.next_element::<Page>()? {
+            if let Page::Image(mut image_page) = page {
+                image_page.index = index;
+                pages.push(Page::Image(image_page));
+                index += 1;
             }
         }
         Ok(pages)
@@ -89,10 +82,7 @@ impl MangaPage for Page {
     }
 
     fn is_image(&self) -> bool {
-        match self {
-            Page::Image(_) => true,
-            _ => false,
-        }
+        matches!(self, Page::Image(_))
     }
 }
 

@@ -1,17 +1,14 @@
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
-use futures::{stream, StreamExt, TryStreamExt};
 use image::DynamicImage;
 use url::Url;
 
-#[cfg(feature = "pdf")]
-use crate::io::pdf::PdfWriter;
 use crate::{
     data::{MangaEpisode, MangaPage},
     error::ClientError,
     io::FileWriter,
-    pipeline::{EpisodePipeline, EpisodePipelineBuilder, SaveFormat, WriterConifg},
+    pipeline::{EpisodePipeline, EpisodePipelineBuilder, SaveFormat, WriterConfig},
     progress::ProgressConfig,
     solver::ImageSolver,
     utils::Bytes,
@@ -24,60 +21,40 @@ use super::{
     viewer::{Client, ConfigBuilder, Website},
 };
 
-/// Pipeline for downloading an episode of Comic Fux manga
 #[derive(Debug, Clone)]
 pub struct Pipeline {
     client: Client,
     progress: ProgressConfig,
-    writer_config: WriterConifg,
+    writer_config: WriterConfig,
     num_threads: usize,
     num_connections: usize,
 }
 
 impl Default for Pipeline {
     fn default() -> Self {
-        let writer_config = WriterConifg::new(SaveFormat::Raw, image::ImageFormat::Png);
         Self {
             client: Client::new(ConfigBuilder::new(Website::ComicFuz).build()),
             progress: ProgressConfig::default(),
-            writer_config,
+            writer_config: WriterConfig::new(SaveFormat::Raw, image::ImageFormat::Png),
             num_threads: num_cpus::get(),
             num_connections: 8,
         }
     }
 }
 
-impl Pipeline {
-    pub fn new<P: AsRef<Path>>(
-        website: Website,
-        progress: ProgressConfig,
-        writer_config: WriterConifg,
-        num_threads: usize,
-        num_connections: usize,
-    ) -> Self {
-        let client = Client::new(ConfigBuilder::new(website).build());
-        Self {
-            client,
-            progress,
-            num_threads,
-            num_connections,
-            // file_writer: Arc::new(FileWriter::new(&writer_config, save_path).unwrap()), // TODO: remove unwrap
-            writer_config,
-        }
-    }
-}
-
 impl EpisodePipelineBuilder<Website, Page, Episode, Pipeline> for Pipeline {
     fn set_website(self, website: Website) -> Self {
-        let client = Client::new(ConfigBuilder::new(website).build());
-        Self { client, ..self }
+        Self {
+            client: Client::new(ConfigBuilder::new(website).build()),
+            ..self
+        }
     }
 
     fn set_progress(self, progress: ProgressConfig) -> Self {
         Self { progress, ..self }
     }
 
-    fn set_writer_config(self, writer_config: WriterConifg) -> Self {
+    fn set_writer_config(self, writer_config: WriterConfig) -> Self {
         Self {
             writer_config,
             ..self
@@ -105,40 +82,38 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
     }
 
     async fn fetch_image(&self, page: &Page) -> Result<Bytes, ClientError> {
+        let path = page.image_path().map_err(|_| ClientError::InvalidPage)?;
         let url = self
             .client
-            .image_url(page.image_path().map_err(|_| ClientError::InvalidPage)?)
+            .image_url(path)
             .map_err(|_| ClientError::InvalidUrl)?;
-        let res = self.client.get(url).await?;
-        let bytes = res.bytes().await.map_err(|_| ClientError::DecodeError)?;
-
-        Ok(bytes.into())
+        self.client
+            .get(url)
+            .await?
+            .bytes()
+            .await
+            .map(Into::into)
+            .map_err(|_| ClientError::DecodeError)
     }
 
     async fn solve_image_bytes(&self, bytes: Bytes, page: Option<Page>) -> Result<Bytes> {
-        let page = page.context("Page is required to solve image")?;
-
-        if let Page::Image(image_page) = page {
-            let solver = Solver::new(image_page.encryption_key(), image_page.encryption_iv());
-            let image = solver.solve(bytes)?;
-            Ok(image)
-        } else {
-            bail!("Page is not an image")
+        match page.context("page is required to solve a FUZ image")? {
+            Page::Image(page) => {
+                Solver::new(page.encryption_key(), page.encryption_iv()).solve(bytes)
+            }
+            _ => bail!("page is not an image"),
         }
     }
 
     async fn solve_image(&self, bytes: Bytes, page: Option<Page>) -> Result<DynamicImage> {
-        let page = page.context("Page is required to solve image")?;
-
-        if let Page::Image(image_page) = page {
-            tokio::task::spawn_blocking(move || {
-                let solver = Solver::new(image_page.encryption_key(), image_page.encryption_iv());
-                let image = solver.solve_from_bytes(bytes)?;
-                Ok(image)
-            })
-            .await?
-        } else {
-            bail!("Page is not an image")
+        match page.context("page is required to solve a FUZ image")? {
+            Page::Image(page) => {
+                tokio::task::spawn_blocking(move || {
+                    Solver::new(page.encryption_key(), page.encryption_iv()).solve_from_bytes(bytes)
+                })
+                .await?
+            }
+            _ => bail!("page is not an image"),
         }
     }
 
@@ -146,165 +121,62 @@ impl EpisodePipeline<Page, Episode> for Pipeline {
         FileWriter::new(&self.writer_config, path)
     }
 
-    async fn download<T: AsRef<Path>>(&self, url: &Url, path: &T) -> Result<()> {
-        let episode_id = self
-            .client
-            .parse_episode_id(url)
-            .context("Failed to parse episode id")?;
-        let episode = self.fetch_episode(&episode_id).await?;
-        let pages = episode
-            .pages()
-            .into_iter()
-            .filter(|page| page.is_image())
-            .collect::<Vec<_>>();
-        let writer = self.file_writer(path)?;
-        writer.prepare().await?;
-
-        let progress = self.progress.build_with_message(
-            pages.len(),
-            format!(
-                "Downloading {}...",
-                episode.title().unwrap_or("Unknown episode".to_string())
-            ),
-        )?;
-
-        stream::iter(pages)
-            .enumerate()
-            .map(|(i, page)| async move { Ok((i, self.fetch_image(&page).await?, page)) })
-            .buffer_unordered(self.num_connections)
-            .map_ok(|(i, image, page)| async move {
-                Ok((i, self.solve_image(image, Some(page)).await?))
-            })
-            .try_buffer_unordered(self.num_threads)
-            .map_ok(|(i, image)| {
-                let writer = writer.clone();
-                async move { Ok((i, self.write(&writer, i, image).await?)) }
-            })
-            .try_buffer_unordered(self.num_threads)
-            .map_ok(|_| {
-                progress.inc(1);
-                async move { anyhow::Ok(()) }
-            })
-            .try_buffered(self.num_threads)
-            .try_collect::<Vec<_>>()
-            .await?;
-
-        progress.finish();
-
-        Ok(())
+    fn progress(&self) -> &ProgressConfig {
+        &self.progress
     }
 
-    async fn download_in<T: AsRef<Path>>(&self, url: &Url, dir: &T) -> Result<()> {
+    fn num_threads(&self) -> usize {
+        self.num_threads
+    }
+
+    fn num_connections(&self) -> usize {
+        self.num_connections
+    }
+
+    async fn download<P: AsRef<Path>>(&self, url: &Url, path: &P) -> Result<()> {
         let episode_id = self
             .client
             .parse_episode_id(url)
-            .context("Failed to parse episode id")?;
+            .context("failed to parse FUZ episode id")?;
         let episode = self.fetch_episode(&episode_id).await?;
-
-        let mut path = dir.as_ref().join(
-            episode
-                .title()
-                .context("Episode title not found")?
-                .replace(".", "_"),
-        );
-        match self.writer_config.save_format() {
-            SaveFormat::Raw => {} // Do nothing
-            SaveFormat::Zip { .. } => {
-                path.set_extension("zip");
-            }
-            #[cfg(feature = "pdf")]
-            SaveFormat::Pdf => {
-                path.set_extension("pdf");
-            }
-        }
-        let writer = self.file_writer(&path)?;
-        writer.prepare().await?;
-
+        let title = episode.title().context("episode title not found")?;
         let pages = episode
             .pages()
             .into_iter()
-            .filter(|page| page.is_image())
-            .collect::<Vec<_>>();
+            .filter(MangaPage::is_image)
+            .collect();
+        self.download_pages(pages, self.file_writer(path)?, &title)
+            .await
+    }
 
-        let progress = self.progress.build_with_message(
-            pages.len(),
-            format!(
-                "Downloading {}...",
-                episode.title().unwrap_or("Unknown episode".to_string())
-            ),
-        )?;
-
-        stream::iter(pages)
-            .enumerate()
-            .map(|(i, page)| async move { Ok((i, self.fetch_image(&page).await?, page)) })
-            .buffer_unordered(self.num_connections)
-            .map_ok(|(i, image, page)| async move {
-                Ok((i, self.solve_image(image, Some(page)).await?))
-            })
-            .try_buffer_unordered(self.num_threads)
-            .map_ok(|(i, image)| {
-                let writer = writer.clone();
-                async move { Ok((i, self.write(&writer, i, image).await?)) }
-            })
-            .try_buffer_unordered(self.num_threads)
-            .map_ok(|_| {
-                progress.inc(1);
-                async move { anyhow::Ok(()) }
-            })
-            .try_buffered(self.num_threads)
-            .try_collect::<Vec<_>>()
-            .await?;
-
-        progress.finish();
-
-        Ok(())
+    async fn download_in<P: AsRef<Path>>(&self, url: &Url, directory: &P) -> Result<()> {
+        let episode_id = self
+            .client
+            .parse_episode_id(url)
+            .context("failed to parse FUZ episode id")?;
+        let episode = self.fetch_episode(&episode_id).await?;
+        let title = episode.title().context("episode title not found")?;
+        let pages = episode
+            .pages()
+            .into_iter()
+            .filter(MangaPage::is_image)
+            .collect();
+        let path = self.writer_config.output_path(directory, &title)?;
+        self.download_pages(pages, self.file_writer(&path)?, &title)
+            .await
     }
 }
 
 #[cfg(test)]
-mod test {
+mod live_tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_pipeline_download_raw() -> Result<()> {
+    #[ignore = "FUZ protobuf API is currently known to be unstable"]
+    async fn downloads_live_episode() -> Result<()> {
         let url = Url::parse("https://comic-fuz.com/manga/viewer/44994")?;
-        let path = "tests/output/fuz_pipe_raw";
-
-        let pipe = Pipeline::default().set_num_threads(16);
-
-        pipe.download(&url, &path).await?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_pipeline_download_zip() -> Result<()> {
-        let url = Url::parse("https://comic-fuz.com/manga/viewer/44994")?;
-        let path = "tests/output/fuz_pipe_zip.zip";
-
-        let pipe = Pipeline::default()
-            .set_num_threads(16)
-            .set_writer_config(WriterConifg::new(
-                SaveFormat::Zip {
-                    compression_method: zip::CompressionMethod::Deflated,
-                    extension: None,
-                },
-                image::ImageFormat::WebP,
-            ));
-
-        pipe.download(&url, &path).await?;
-        Ok(())
-    }
-
-    #[cfg(feature = "pdf")]
-    #[tokio::test]
-    async fn test_pipeline_download_pdf() -> Result<()> {
-        let url = Url::parse("https://comic-fuz.com/manga/viewer/44994")?;
-        let path = "tests/output/fuz_pipe_pdf.pdf";
-
-        let pipe = Pipeline::default()
-            .set_writer_config(WriterConifg::new(SaveFormat::Pdf, image::ImageFormat::Jpeg));
-
-        pipe.download(&url, path).await?;
-        Ok(())
+        Pipeline::default()
+            .download(&url, &"tests/output/live-fuz")
+            .await
     }
 }

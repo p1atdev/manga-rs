@@ -37,7 +37,7 @@ impl EpisodeWriter for RawWriter {
     }
 
     async fn write_page(&self, page: usize, image: image::DynamicImage) -> Result<()> {
-        let image_name = format!("{}.{}", page, self.image_format.extensions_str()[0]);
+        let image_name = format!("{page:04}.{}", self.image_format.extensions_str()[0]);
         let save_path = self.save_path().join(image_name);
         let image_format = self.image_format;
 

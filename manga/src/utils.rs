@@ -5,15 +5,15 @@ pub enum UserAgent {
 }
 
 impl UserAgent {
-    pub fn value(&self) -> String {
+    pub fn value(&self) -> &'static str {
         match self {
             UserAgent::Bot => BOT_USER_AGENT,
         }
-        .to_string()
     }
 }
 
 /// Include generated proto files
+#[cfg(feature = "fuz")]
 macro_rules! include_proto {
     ($name:literal) => {
         include!(concat!(env!("OUT_DIR"), "/", $name, ".rs"));
@@ -21,9 +21,13 @@ macro_rules! include_proto {
 }
 use std::io::Cursor;
 
-use anyhow::{anyhow, Result};
+#[cfg(any(feature = "kadokomi", test))]
+use anyhow::anyhow;
+use anyhow::Result;
 use image::{DynamicImage, ImageFormat};
+#[cfg(feature = "fuz")]
 pub(crate) use include_proto;
+#[cfg(any(feature = "kadokomi", test))]
 use scraper::Html;
 
 pub(crate) type Bytes = Vec<u8>;
@@ -35,9 +39,12 @@ pub(crate) fn encode_image(image: &DynamicImage, format: ImageFormat) -> Result<
 }
 
 /// Get script#__NEXT_DATA__ from HTML
+#[cfg(any(feature = "kadokomi", test))]
 pub(crate) fn extract_next_data_json(html: &Html) -> Result<String> {
+    let selector = scraper::Selector::parse("script#__NEXT_DATA__")
+        .map_err(|error| anyhow!("invalid __NEXT_DATA__ selector: {error}"))?;
     let script = html
-        .select(&scraper::Selector::parse("script#__NEXT_DATA__").unwrap())
+        .select(&selector)
         .next()
         .ok_or_else(|| anyhow!("script#__NEXT_DATA__ not found"))?;
     let inner_html = script.inner_html();

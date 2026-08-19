@@ -1,10 +1,12 @@
+pub mod detect;
 #[cfg(feature = "fuz")]
 pub mod fuz;
 
+#[cfg(feature = "giga")]
 pub mod giga;
-pub mod ichijin;
+#[cfg(feature = "kadokomi")]
 pub mod kadocomi;
-#[deprecated]
+#[cfg(feature = "mangaz")]
 pub mod mangaz;
 
 use std::future::Future;
@@ -13,17 +15,20 @@ use anyhow::Result;
 use reqwest::{header::HeaderMap, Response, StatusCode};
 use url::Url;
 
-use crate::{
-    auth::Auth,
-    error::{ClientError, HttpError},
-};
+use crate::{auth::Auth, error::ClientError};
 
-/// Manga viewer enum
+/// Manga viewer implementation detected from page contents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ViewerType {
+    #[cfg(feature = "giga")]
     Giga,
-    Ichijin,
+    #[cfg(feature = "kadokomi")]
+    Kadokomi,
     #[cfg(feature = "fuz")]
     Fuz,
+    #[cfg(feature = "mangaz")]
+    MangaZ,
 }
 
 pub trait ViewerConfig {
@@ -67,22 +72,7 @@ pub trait ViewerClient<V: ViewerConfig> {
     }
 
     fn map_error_status(&self, status: StatusCode) -> ClientError {
-        match status {
-            StatusCode::NOT_FOUND => ClientError::HttpError(HttpError::PageNotFound),
-            StatusCode::TOO_MANY_REQUESTS => ClientError::HttpError(HttpError::TooManyRequests),
-            StatusCode::INTERNAL_SERVER_ERROR => {
-                ClientError::HttpError(HttpError::InternalServerError)
-            }
-            StatusCode::BAD_REQUEST => ClientError::HttpError(HttpError::BadRequest),
-            StatusCode::UNAUTHORIZED => ClientError::HttpError(HttpError::Unauthorized),
-            StatusCode::FORBIDDEN => ClientError::HttpError(HttpError::Forbidden),
-            _ => ClientError::HttpError(HttpError::Unknown(
-                status
-                    .canonical_reason()
-                    .unwrap_or(&status.to_string())
-                    .to_string(),
-            )),
-        }
+        ClientError::from_status(status)
     }
 }
 

@@ -1,22 +1,19 @@
-use std::sync::LazyLock;
-
-use anyhow::{anyhow, bail, Result};
-use regex::Regex;
-use reqwest::header::{self, HeaderMap, HeaderValue};
-use reqwest::{IntoUrl, Response, StatusCode};
+use anyhow::{Context, Result};
+use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use scraper::{Html, Selector};
 use url::Url;
 
-use crate::auth::EmptyAuth;
-use crate::error::{ClientError, HttpError};
-use crate::feed::{FeedContent, FeedParser};
-use crate::utils;
-use crate::viewer::giga::data::Episode;
-use crate::viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder, ViewerWebsite};
+use crate::{
+    auth::EmptyAuth,
+    error::ClientError,
+    feed::{FeedContent, FeedParser},
+    http::HttpClient,
+    utils::UserAgent,
+    viewer::{ViewerConfig, ViewerConfigBuilder, ViewerWebsite},
+};
 
-use super::data::{Gtm, GtmEpisode};
+use super::data::{Episode, Gtm, GtmEpisode};
 
-/// GigaViewer website family
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Website {
     ShonenJumpPlus,
@@ -61,13 +58,9 @@ static HOST_TO_WEBSITE: phf::Map<&str, Website> = phf::phf_map! {
     "ourfeel.jp" => Website::Ourfeel,
 };
 
-/// Episode path pattern
-static EPISODE_PATH_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"/episode/(\d+)(?:\.json)?$"#).unwrap());
-
 impl ViewerWebsite<Website> for Website {
     fn host(&self) -> &str {
-        match &self {
+        match self {
             Website::ShonenJumpPlus => "shonenjumpplus.com",
             Website::TonarinoYJ => "tonarinoyj.jp",
             Website::MagaPocket => "pocket.shonenmagazine.com",
@@ -91,58 +84,64 @@ impl ViewerWebsite<Website> for Website {
     }
 
     fn base_url(&self) -> Url {
-        Url::parse(&format!("https://{}", self.host())).unwrap()
+        Url::parse(&format!("https://{}", self.host())).expect("website hosts form valid URLs")
     }
 
     fn lookup(host: &str) -> Option<Website> {
-        HOST_TO_WEBSITE.get(host).map(|w| w.clone())
+        HOST_TO_WEBSITE.get(host).cloned()
     }
 }
-/// viewer config
+
 #[derive(Debug, Clone)]
 pub struct Config {
     base_url: Url,
 }
 
+impl Config {
+    fn headers(&self) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(USER_AGENT, HeaderValue::from_static(UserAgent::Bot.value()));
+        headers
+    }
+
+    fn episode_url(&self, episode_id: &str) -> Result<Url, ClientError> {
+        self.base_url
+            .join(&format!("episode/{episode_id}"))
+            .map_err(|_| ClientError::InvalidUrl)
+    }
+
+    fn series_atom_url(&self, series_id: &str) -> Result<Url, ClientError> {
+        self.base_url
+            .join(&format!("atom/series/{series_id}"))
+            .map_err(|_| ClientError::InvalidUrl)
+    }
+}
+
 impl ViewerConfig for Config {
     fn create_header(&self) -> Result<HeaderMap, ClientError> {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::USER_AGENT,
-            HeaderValue::from_str(&utils::UserAgent::Bot.value())
-                .map_err(|_| ClientError::InvalidHeader)?,
-        );
-        Ok(headers)
+        Ok(self.headers())
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ConfigBuilder {
     base_url: Url,
-    auth: Option<EmptyAuth>,
 }
 
 impl ConfigBuilder {
-    /// Create a new ConfigBuilder from preset
     pub fn new(website: Website) -> Self {
         Self {
             base_url: website.base_url(),
-            auth: None,
         }
     }
 
-    /// Create a new ConfigBuilder from custom url
-    pub fn custom(url: String) -> Result<Self> {
-        Ok(Self {
-            base_url: Url::parse(&url)?,
-            auth: None,
-        })
+    pub fn custom(base_url: Url) -> Self {
+        Self { base_url }
     }
 }
 
 impl ViewerConfigBuilder<Config, EmptyAuth> for ConfigBuilder {
-    fn set_auth(&mut self, auth: EmptyAuth) -> &mut Self {
-        self.auth = Some(auth);
+    fn set_auth(&mut self, _auth: EmptyAuth) -> &mut Self {
         self
     }
 
@@ -153,411 +152,115 @@ impl ViewerConfigBuilder<Config, EmptyAuth> for ConfigBuilder {
     }
 }
 
-/// ChojuGiga viewer client
 #[derive(Debug, Clone)]
 pub struct Client {
-    client: reqwest::Client,
+    http: HttpClient,
     config: Config,
 }
 
-impl ViewerClient<Config> for Client {
-    fn new(config: Config) -> Self {
-        let client = reqwest::Client::new();
-        Self { client, config }
-    }
-
-    async fn fetch_raw<B: Into<reqwest::Body> + Send>(
-        &self,
-        url: Url,
-        method: reqwest::Method,
-        body: Option<B>,
-        headers: Option<HeaderMap>,
-    ) -> Result<Response, ClientError> {
-        let mut req = self
-            .client
-            .request(method, url)
-            .headers(self.config.create_header()?);
-        if let Some(headers) = headers {
-            req = req.headers(headers);
-        }
-        if let Some(body) = body {
-            req = req.body(body);
-        }
-        let res = req.send().await.map_err(|_| ClientError::RequestError)?;
-        if res.status().is_success() {
-            return Ok(res);
-        }
-        Err(self.map_error_status(res.status()))
-    }
-}
-
 impl Client {
-    /// Get episode id from the provided url.
-    /// - https://example.com/episode/123456
-    /// - https://example.com/episode/123456.json
-    pub fn parse_episode_id(&self, url: &Url) -> Option<String> {
-        let path = url.path();
-        let captures = EPISODE_PATH_PATTERN.captures(path)?;
-        captures.get(1).map(|m| m.as_str().to_string())
+    pub fn new(config: Config) -> Self {
+        Self {
+            http: HttpClient::new(config.headers()),
+            config,
+        }
+    }
+
+    pub async fn get(&self, url: Url) -> Result<reqwest::Response, ClientError> {
+        self.http.get(url).await
     }
 
     async fn get_html(&self, url: Url) -> Result<Html, ClientError> {
-        let res = self.get(url).await?;
-        let html = Html::parse_document(&res.text().await.map_err(|_| ClientError::DecodeError)?);
-        Ok(html)
+        let response = self.get(url).await?;
+        let body = response
+            .text()
+            .await
+            .map_err(|_| ClientError::DecodeError)?;
+        Ok(Html::parse_document(&body))
     }
 
     async fn get_feed(&self, url: Url) -> Result<FeedContent, ClientError> {
-        let res = self.get(url).await?;
-        let parser = FeedParser::new();
-        let feed = parser
-            .parse(&res.text().await.map_err(|_| ClientError::DecodeError)?)
-            .map_err(|e| ClientError::ParseError(format!("Failed to parse feed: {}", e)))?;
-
-        Ok(feed)
+        let response = self.get(url).await?;
+        let body = response
+            .text()
+            .await
+            .map_err(|_| ClientError::DecodeError)?;
+        FeedParser::new()
+            .parse(&body)
+            .map_err(|error| ClientError::ParseError(error.to_string()))
     }
 
-    fn compose_episode_url(&self, episode_id: &str) -> Url {
-        self.config
-            .base_url
-            .join(&format!("/episode/{}", episode_id))
-            .unwrap()
-    }
-
-    /// Get episode
     pub async fn get_episode(&self, episode_id: &str) -> Result<Episode, ClientError> {
-        let url = self.compose_episode_url(episode_id);
+        self.get_episode_at(self.config.episode_url(episode_id)?)
+            .await
+    }
+
+    pub async fn get_episode_at(&self, url: Url) -> Result<Episode, ClientError> {
         let html = self.get_html(url).await?;
-        self.get_episode_from_html(&html)
+        Self::parse_episode_html(&html)
     }
 
-    fn extract_episode_json(&self, html: &Html) -> Result<String, ClientError> {
-        let selector = Selector::parse("script#episode-json").map_err(|_| {
-            ClientError::ParseError("Failed to parse selector script#episode-json".to_string())
-        })?;
-        let json = match html.select(&selector).next() {
-            Some(element) => Ok(element.attr("data-value").ok_or(ClientError::ParseError(
-                "Failed to extract data-value".to_string(),
-            ))?),
-            None => Err(ClientError::ParseError(
-                "Failed to find script#episode-json".to_string(),
-            )),
-        }?;
-        Ok(json.to_string())
+    fn parse_episode_html(html: &Html) -> Result<Episode, ClientError> {
+        let selector = Selector::parse("script#episode-json[data-value]")
+            .expect("the Giga viewer selector is valid");
+        let json = html
+            .select(&selector)
+            .next()
+            .and_then(|element| element.attr("data-value"))
+            .ok_or_else(|| ClientError::ParseError("episode-json script not found".to_owned()))?;
+        serde_json::from_str(json).map_err(|error| ClientError::ParseError(error.to_string()))
     }
 
-    fn get_episode_from_html(&self, html: &Html) -> Result<Episode, ClientError> {
-        let json = self.extract_episode_json(&html)?;
-        let episode: Episode = serde_json::from_str(&json)
-            .map_err(|_| ClientError::ParseError("Failed to parse episode json".to_string()))?;
-        Ok(episode)
-    }
-
-    fn compose_series_atom_url(&self, series_id: &str) -> Url {
-        // https://shonenjumpplus.com/atom/series/9324103629152359675?free_only=1
-        self.config
-            .base_url
-            .join(&format!("/atom/series/{}", series_id))
-            .unwrap()
-    }
-
-    fn extract_data_gtm_data_layer(&self, html: &Html) -> Result<String> {
-        let selector = match Selector::parse("html") {
-            Ok(selector) => selector,
-            Err(_) => bail!("Failed to parse selector"),
-        };
-        let gtm_data_layer = match html.select(&selector).next() {
-            Some(element) => Ok(element
-                .attr("data-gtm-data-layer")
-                .ok_or(anyhow!("Failed to extract data-gtm-data-layer"))?),
-            None => Err(anyhow!("Failed to find html")),
-        }?;
-
-        Ok(gtm_data_layer.to_string())
-    }
-
-    async fn get_gtm_data_from_html(&self, html: &Html) -> Result<GtmEpisode> {
-        let gtm_data = self.extract_data_gtm_data_layer(&html)?;
-        let gtm_data: Gtm = serde_json::from_str(&gtm_data)?;
-        Ok(gtm_data.episode().clone())
+    fn parse_gtm_data(html: &Html) -> Result<GtmEpisode> {
+        let selector = Selector::parse("html").expect("the html selector is valid");
+        let json = html
+            .select(&selector)
+            .next()
+            .and_then(|element| element.attr("data-gtm-data-layer"))
+            .context("data-gtm-data-layer attribute not found")?;
+        Ok(serde_json::from_str::<Gtm>(json)?.episode().clone())
     }
 
     pub async fn get_series_id(&self, url: Url) -> Result<String> {
         let html = self.get_html(url).await?;
-        let gtm_data = self.get_gtm_data_from_html(&html).await?;
-        Ok(gtm_data.series_id().to_string())
+        Ok(Self::parse_gtm_data(&html)?.series_id().to_owned())
     }
 
     pub async fn get_series_feed(&self, series_id: &str) -> Result<FeedContent, ClientError> {
-        let url = self.compose_series_atom_url(&series_id);
-        self.get_feed(url).await
+        self.get_feed(self.config.series_atom_url(series_id)?).await
     }
 }
 
 #[cfg(test)]
-mod test {
-    use std::{path::Path, sync::Arc};
-
-    use futures::{StreamExt as _, TryStreamExt};
-    use indicatif::ParallelProgressIterator;
-    use rayon::{
-        iter::{IntoParallelRefIterator, ParallelIterator},
-        slice::ParallelSliceMut,
-    };
-
-    #[cfg(feature = "pdf")]
-    use crate::io::pdf::PdfWriter;
-    use crate::{
-        data::{MangaEpisode, MangaPage},
-        io::{raw::RawWriter, zip::ZipWriter, EpisodeWriter},
-        progress::ProgressConfig,
-        solver::ImageSolver,
-        viewer::giga::solver::Solver,
-    };
+mod tests {
+    use crate::data::{MangaEpisode, MangaPage};
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_get_html() -> Result<()> {
-        let client = Client::new(ConfigBuilder::new(Website::ShonenJumpPlus).build());
-        let url = Url::parse("https://shonenjumpplus.com/episode/9324103658562874562")?;
-        let html = client.get_html(url).await?;
-        println!("{:?}", html);
-
-        Ok(())
+    fn config() -> Config {
+        ConfigBuilder::custom(Url::parse("http://localhost:4000/").unwrap()).build()
     }
 
-    #[tokio::test]
-    async fn test_get_episode() {
-        let episode_ids = vec![
-            "9324103625676410700",
-            "10834108156672080500",
-            "16457717013869519536",
-            "8603475606564031793",
-        ];
-
-        for &episode_id in episode_ids.iter() {
-            let config = ConfigBuilder::new(Website::ShonenJumpPlus).build();
-            let client = Client::new(config);
-            let episode = client.get_episode(episode_id).await.unwrap();
-            assert_eq!(episode.id(), episode_id);
-            assert!(episode.title().is_some());
-
-            let page = episode.pages();
-
-            for p in page {
-                let index = p.index().unwrap();
-                let url = p.url().unwrap();
-                println!("{}: {}", index, url);
-            }
-        }
+    #[test]
+    fn composes_urls_from_custom_origin() {
+        assert_eq!(
+            config().episode_url("42").unwrap().as_str(),
+            "http://localhost:4000/episode/42"
+        );
     }
 
-    #[tokio::test]
-    async fn test_get_and_solve_pages() -> Result<()> {
-        let episode_id = "9324103625676410700";
-
-        let progress = ProgressConfig::default();
-        let config = ConfigBuilder::new(Website::ShonenJumpPlus).build();
-        let client = Arc::new(Client::new(config));
-        let episode = client.get_episode(episode_id).await?;
-
-        let pages = episode.pages();
-
-        println!("Downloading {} pages", pages.len());
-
-        let pages = progress
-            .build(pages.len())?
-            .wrap_stream(futures::stream::iter(pages))
-            .map(|page| {
-                let client = client.clone();
-
-                async move {
-                    let url = page.url()?;
-                    let res = client.get(url).await?;
-                    let bytes = res.bytes().await?;
-
-                    Result::<_>::Ok((bytes, page))
-                }
-            })
-            .buffer_unordered(4)
-            .try_collect::<Vec<_>>()
-            .await?;
-
-        println!("Solving {} pages", pages.len());
-
-        let solver = Arc::new(Solver::new());
-        let mut images = pages
-            .par_iter()
-            .progress_with(progress.build(pages.len())?)
-            .map(|(bytes, page)| {
-                let image = solver.solve_from_bytes(bytes)?;
-                let index = page.index()?;
-                Result::<_>::Ok((image, index))
-            })
-            .collect::<Result<Vec<_>>>()?;
-        images.par_sort_by_key(|(_, index)| *index);
-        let images = images
-            .into_iter()
-            .map(|(image, _)| image)
-            .collect::<Vec<_>>();
-
-        println!("Saving {} pages", images.len());
-
-        tokio::fs::create_dir_all("tests/output/giga_solve_raw").await?;
-        let writer = Arc::new(RawWriter::default(&Path::new(
-            "tests/output/giga_solve_raw",
+    #[test]
+    fn parses_episode_fixture_and_indexes_only_image_pages() {
+        let html = Html::parse_document(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/giga_episode.html"
         )));
-
-        progress
-            .build(images.len())?
-            .wrap_stream(futures::stream::iter(images))
-            .enumerate()
-            .map(|(i, image)| {
-                let writer = writer.clone();
-                async move { writer.write_page(i, image).await }
-            })
-            .buffer_unordered(num_cpus::get())
-            .try_collect::<Vec<_>>()
-            .await?;
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_get_and_solve_and_save_as_zip() -> Result<()> {
-        let episode_id = "9324103625676410700";
-
-        let progress = ProgressConfig::default();
-        let config = ConfigBuilder::new(Website::ShonenJumpPlus).build();
-        let client = Arc::new(Client::new(config));
-        let episode = client.get_episode(episode_id).await?;
-
+        let episode = Client::parse_episode_html(&html).unwrap();
         let pages = episode.pages();
 
-        println!("Downloading {} pages", pages.len());
-
-        let pages = progress
-            .build(pages.len())?
-            .wrap_stream(futures::stream::iter(pages))
-            .map(|page| {
-                let client = client.clone();
-
-                async move {
-                    let url = page.url()?;
-                    let res = client.get(url).await?;
-                    let bytes = res.bytes().await?;
-
-                    Result::<_>::Ok(bytes)
-                }
-            })
-            .buffer_unordered(4)
-            .try_collect::<Vec<_>>()
-            .await?;
-
-        println!("Solving {} pages", pages.len());
-
-        let solver = Arc::new(Solver::new());
-        let images = pages
-            .par_iter()
-            .progress_with(progress.build(pages.len())?)
-            .map(|bytes| {
-                let image = solver.solve_from_bytes(bytes)?;
-                Result::<_>::Ok(image)
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        println!("Saving as zip...");
-
-        let writer = Arc::new(ZipWriter::default(&Path::new(
-            "tests/output/giga_solve_2.zip",
-        ))?);
-        progress
-            .build(images.len())?
-            .wrap_stream(futures::stream::iter(images))
-            .enumerate()
-            .map(|(i, image)| {
-                let writer = writer.clone();
-                async move { writer.write_page(i, image).await }
-            })
-            .buffer_unordered(num_cpus::get())
-            .try_collect::<Vec<_>>()
-            .await?;
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_get_series_feed() -> Result<()> {
-        let episode_id = "9324103625676410700";
-
-        let config = ConfigBuilder::new(Website::ShonenJumpPlus).build();
-        let client = Client::new(config);
-        let series_id = client
-            .get_series_id(client.compose_episode_url(episode_id))
-            .await?;
-        let feed = client.get_series_feed(&series_id).await?;
-        feed.entries().iter().for_each(|entry| {
-            assert!(entry.title().is_some());
-            entry.links().iter().for_each(|link| {
-                assert!(link.url() != "");
-            });
-        });
-
-        Ok(())
-    }
-
-    #[cfg(feature = "pdf")]
-    #[tokio::test]
-    async fn test_get_and_solve_and_save_as_pdf() -> Result<()> {
-        let episode_id = "9324103625676410700";
-
-        let progress = ProgressConfig::default();
-        let config = ConfigBuilder::new(Website::ShonenJumpPlus).build();
-        let client = Arc::new(Client::new(config));
-        let episode = client.get_episode(episode_id).await?;
-
-        let pages = episode.pages();
-
-        println!("Downloading {} pages", pages.len());
-
-        let pages = progress
-            .build(pages.len())?
-            .wrap_stream(futures::stream::iter(pages))
-            .map(|page| {
-                let client = client.clone();
-
-                async move {
-                    let url = page.url()?;
-                    let res = client.get(url).await?;
-                    let bytes = res.bytes().await?;
-
-                    Result::<_>::Ok(bytes)
-                }
-            })
-            .buffer_unordered(4)
-            .try_collect::<Vec<_>>()
-            .await?;
-
-        println!("Solving {} pages", pages.len());
-
-        let solver = Arc::new(Solver::new());
-        let images = pages
-            .par_iter()
-            .progress_with(progress.build(pages.len())?)
-            .map(|bytes| {
-                let image = solver.solve_from_bytes(bytes)?;
-                Result::<_>::Ok(image)
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        println!("Saving as zip...");
-
-        let writer = PdfWriter::default();
-        writer
-            .write_images(images, "tests/output/giga_solve_3.pdf")
-            .await?;
-
-        Ok(())
+        assert_eq!(episode.id(), "episode-1");
+        assert_eq!(pages.len(), 2);
+        assert_eq!(pages[0].index().unwrap(), 0);
+        assert_eq!(pages[1].index().unwrap(), 1);
     }
 }

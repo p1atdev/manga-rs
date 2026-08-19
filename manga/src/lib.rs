@@ -1,9 +1,10 @@
 pub mod auth;
 pub mod data;
 pub mod error;
+#[cfg(feature = "giga")]
 pub(crate) mod feed;
+pub mod http;
 pub mod io;
-pub mod parser;
 pub mod pipeline;
 pub mod progress;
 pub mod solver;

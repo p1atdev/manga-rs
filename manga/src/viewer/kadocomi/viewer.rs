@@ -1,61 +1,45 @@
 use anyhow::Result;
-use reqwest::{
-    header::{self, HeaderMap, HeaderValue},
-    Response,
-};
+use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use scraper::Html;
 use url::Url;
 
 use crate::{
     auth::EmptyAuth,
     error::ClientError,
-    utils,
-    viewer::{ViewerClient, ViewerConfig, ViewerConfigBuilder, ViewerWebsite},
+    http::HttpClient,
+    utils::{extract_next_data_json, UserAgent},
+    viewer::{ViewerConfig, ViewerConfigBuilder, ViewerWebsite},
 };
-
-use self::utils::extract_next_data_json;
 
 use super::data::{episode::Episode, next::EpisodeNextData};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Website {
-    Kadocomi,
+    Kadokomi,
 }
-
-static HOST_TO_WEBSITE: phf::Map<&str, Website> = phf::phf_map! {
-    "comic-walker.com" => Website::Kadocomi,
-};
 
 impl ViewerWebsite<Website> for Website {
     fn host(&self) -> &str {
-        match &self {
-            Website::Kadocomi => "comic-walker.com",
-        }
+        "comic-walker.com"
     }
 
-    fn base_url(&self) -> url::Url {
-        let url = match &self {
-            Website::Kadocomi => "https://comic-walker.com",
-        };
-        url::Url::parse(url).unwrap()
+    fn base_url(&self) -> Url {
+        Url::parse("https://comic-walker.com").expect("Kadokomi URL is valid")
     }
 
     fn lookup(host: &str) -> Option<Website> {
-        HOST_TO_WEBSITE.get(host).map(|w| *w)
+        (host == "comic-walker.com").then_some(Website::Kadokomi)
     }
 }
 
-/// Kadocomi has 2 image size types: width:1280 and width:768.
-/// - width:1280 is the large image size. (for PC)
-/// - width:768 is the small image size.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImageSize {
     Large,
     Small,
 }
 
 impl ImageSize {
-    pub fn query_value(&self) -> &str {
+    pub fn query_value(self) -> &'static str {
         match self {
             ImageSize::Large => "width:1284",
             ImageSize::Small => "width:768",
@@ -63,55 +47,66 @@ impl ImageSize {
     }
 }
 
-/// viewer config
 #[derive(Debug, Clone)]
 pub struct Config {
     base_url: Url,
     image_size: ImageSize,
 }
 
+impl Config {
+    fn headers(&self) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(USER_AGENT, HeaderValue::from_static(UserAgent::Bot.value()));
+        headers
+    }
+
+    fn api_viewer_url(&self, episode_id: &str) -> Result<Url, ClientError> {
+        let mut url = self
+            .base_url
+            .join("api/contents/viewer")
+            .map_err(|_| ClientError::InvalidUrl)?;
+        url.query_pairs_mut()
+            .append_pair("episodeId", episode_id)
+            .append_pair("imageSizeType", self.image_size.query_value());
+        Ok(url)
+    }
+}
+
 impl ViewerConfig for Config {
     fn create_header(&self) -> Result<HeaderMap, ClientError> {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::USER_AGENT,
-            HeaderValue::from_str(&utils::UserAgent::Bot.value())
-                .map_err(|_| ClientError::InvalidHeader)?,
-        );
-        Ok(headers)
+        Ok(self.headers())
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ConfigBuilder {
     base_url: Url,
-    auth: Option<EmptyAuth>,
     image_size: ImageSize,
 }
 
 impl ConfigBuilder {
-    /// Create a new ConfigBuilder from preset
     pub fn new(website: Website) -> Self {
         Self {
             base_url: website.base_url(),
-            auth: None,
             image_size: ImageSize::Large,
         }
     }
 
-    /// Create a new ConfigBuilder from custom url
-    pub fn custom(url: String) -> Result<Self> {
-        Ok(Self {
-            base_url: Url::parse(&url)?,
-            auth: None,
+    pub fn custom(base_url: Url) -> Self {
+        Self {
+            base_url,
             image_size: ImageSize::Large,
-        })
+        }
+    }
+
+    pub fn image_size(mut self, image_size: ImageSize) -> Self {
+        self.image_size = image_size;
+        self
     }
 }
 
 impl ViewerConfigBuilder<Config, EmptyAuth> for ConfigBuilder {
-    fn set_auth(&mut self, auth: EmptyAuth) -> &mut Self {
-        self.auth = Some(auth);
+    fn set_auth(&mut self, _auth: EmptyAuth) -> &mut Self {
         self
     }
 
@@ -123,152 +118,85 @@ impl ViewerConfigBuilder<Config, EmptyAuth> for ConfigBuilder {
     }
 }
 
-/// ChojuGiga viewer client
 #[derive(Debug, Clone)]
 pub struct Client {
-    client: reqwest::Client,
+    http: HttpClient,
     config: Config,
 }
 
-impl ViewerClient<Config> for Client {
-    fn new(config: Config) -> Self {
-        let client = reqwest::Client::new();
-        Self { client, config }
-    }
-
-    async fn fetch_raw<B: Into<reqwest::Body> + Send>(
-        &self,
-        url: Url,
-        method: reqwest::Method,
-        body: Option<B>,
-        headers: Option<HeaderMap>,
-    ) -> Result<Response, ClientError> {
-        let mut req = self
-            .client
-            .request(method, url)
-            .headers(self.config.create_header()?);
-        if let Some(headers) = headers {
-            req = req.headers(headers);
-        }
-        if let Some(body) = body {
-            req = req.body(body);
-        }
-        let res = req.send().await.map_err(|_| ClientError::RequestError)?;
-        if res.status().is_success() {
-            return Ok(res);
-        }
-        Err(self.map_error_status(res.status()))
-    }
-}
-
 impl Client {
+    pub fn new(config: Config) -> Self {
+        Self {
+            http: HttpClient::new(config.headers()),
+            config,
+        }
+    }
+
+    pub async fn get(&self, url: Url) -> Result<reqwest::Response, ClientError> {
+        self.http.get(url).await
+    }
+
     async fn get_html(&self, url: Url) -> Result<Html, ClientError> {
-        let res = self.get(url).await?;
-        let html = Html::parse_document(&res.text().await.map_err(|_| ClientError::DecodeError)?);
-        Ok(html)
+        let response = self.get(url).await?;
+        let body = response
+            .text()
+            .await
+            .map_err(|_| ClientError::DecodeError)?;
+        Ok(Html::parse_document(&body))
     }
 
-    /// Compose API viewer URL.
-    /// Sample: https://comic-walker.com/api/contents/viewer?episodeId=018d6b94-03f2-7717-955c-7c634f8dead6&imageSizeType=width:1284
-    fn compose_api_viewer_url(&self, episode_id: &str) -> Result<Url, ClientError> {
-        Ok(self
-            .config
-            .base_url
-            .join(&format!(
-                "/api/contents/viewer?episodeId={}&imageSizeType={}",
-                episode_id,
-                self.config.image_size.query_value()
-            ))
-            .map_err(|_| ClientError::InvalidUrl)?)
-    }
-
-    fn parser_next_data(&self, html: &Html) -> Result<EpisodeNextData> {
-        let script = extract_next_data_json(html)?;
-        let json: EpisodeNextData = serde_json::from_str(&script)?;
-
-        Ok(json)
+    fn parse_next_data(html: &Html) -> Result<EpisodeNextData, ClientError> {
+        let json = extract_next_data_json(html)
+            .map_err(|error| ClientError::ParseError(error.to_string()))?;
+        serde_json::from_str(&json).map_err(|error| ClientError::ParseError(error.to_string()))
     }
 
     pub async fn get_api_viewer(&self, episode_id: &str) -> Result<Episode, ClientError> {
-        let url = self.compose_api_viewer_url(episode_id)?;
-        let res = self.get(url.clone()).await?;
-        if res.status().is_success() {
-            let episode: Episode =
-                serde_json::from_slice(&res.bytes().await.map_err(|_| ClientError::DecodeError)?)
-                    .map_err(|_| ClientError::DecodeError)?;
-            return Ok(episode);
-        }
-
-        Err(self.map_error_status(res.status()))
+        let response = self.get(self.config.api_viewer_url(episode_id)?).await?;
+        serde_json::from_slice(
+            &response
+                .bytes()
+                .await
+                .map_err(|_| ClientError::DecodeError)?,
+        )
+        .map_err(|error| ClientError::ParseError(error.to_string()))
     }
 
     pub async fn get_next_data(&self, url: Url) -> Result<EpisodeNextData, ClientError> {
         let html = self.get_html(url).await?;
-        let data = self
-            .parser_next_data(&html)
-            .map_err(|e| ClientError::ParseError(e.to_string()))?;
-
-        Ok(data)
+        Self::parse_next_data(&html)
     }
 }
 
 #[cfg(test)]
-mod test {
-
+mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_get_html() -> Result<()> {
-        let client = Client::new(ConfigBuilder::new(Website::Kadocomi).build());
-        let url = Url::parse("https://comic-walker.com/detail/KC_000735_S")?;
-        let html = client.get_html(url).await?;
-        println!("{:?}", html);
-
-        Ok(())
+    fn config() -> Config {
+        ConfigBuilder::custom(Url::parse("http://localhost:4000/").unwrap()).build()
     }
 
-    #[tokio::test]
-    async fn test_get_api_viewer_url() -> Result<()> {
-        let client = Client::new(ConfigBuilder::new(Website::Kadocomi).build());
-        let episode_id = "018d6b94-03f2-7717-955c-7c634f8dead6";
-        let url = client.compose_api_viewer_url(episode_id)?;
-        let res = client.get(url).await?;
-
-        assert!(res.status().is_success());
-
-        Ok(())
+    #[test]
+    fn composes_api_url_from_custom_origin() {
+        let url = config().api_viewer_url("episode id").unwrap();
+        assert_eq!(url.path(), "/api/contents/viewer");
+        assert_eq!(
+            url.query_pairs().collect::<Vec<_>>(),
+            vec![
+                ("episodeId".into(), "episode id".into()),
+                ("imageSizeType".into(), "width:1284".into()),
+            ]
+        );
     }
 
-    #[tokio::test]
-    async fn test_parser_next_data() -> Result<()> {
-        let client = Client::new(ConfigBuilder::new(Website::Kadocomi).build());
-        let url = Url::parse("https://comic-walker.com/detail/KC_000735_S")?;
-        let html = client.get_html(url).await?;
-
-        let data = client.parser_next_data(&html)?;
-
-        println!("{:?}", data);
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_parser_next_data_easy() -> Result<()> {
-        let client = Client::new(ConfigBuilder::new(Website::Kadocomi).build());
-        let url = Url::parse("https://comic-walker.com/detail/KC_000735_S")?;
-        let data = client.get_next_data(url).await?;
-
-        println!("{:?}", data);
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_get_api_viewer() -> Result<()> {
-        let client = Client::new(ConfigBuilder::new(Website::Kadocomi).build());
-        let episode_id = "018d6b94-03f2-7717-955c-7c634f8dead6";
-        let _data = client.get_api_viewer(episode_id).await?;
-
-        Ok(())
+    #[test]
+    fn parses_next_data_without_network() {
+        let html = Html::parse_document(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/kadokomi_next.html"
+        )));
+        let data = Client::parse_next_data(&html).unwrap();
+        assert_eq!(data.episode_id().unwrap(), "episode-1");
+        assert_eq!(data.episode_title().unwrap(), "Episode 1");
     }
 }

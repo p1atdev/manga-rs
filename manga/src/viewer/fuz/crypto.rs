@@ -14,13 +14,13 @@ pub fn decrypt_aes_cbc(buffer: &[u8], key_hex: &str, iv_hex: &str) -> Result<Vec
 
     let key = GenericArray::from_slice(&key_bytes);
     let iv = GenericArray::from_slice(&iv_bytes);
-    let decrypter = Decryptor::<Aes256Dec>::new(&key, &iv);
+    let decrypter = Decryptor::<Aes256Dec>::new(key, iv);
     let decrypter = Arc::new(Mutex::new(decrypter));
 
     let mut buffer = buffer
         .to_vec()
         .chunks(Aes256Dec::block_size())
-        .map(|chunk| GenericArray::clone_from_slice(chunk))
+        .map(GenericArray::clone_from_slice)
         .collect::<Vec<GenericArray<_, _>>>();
 
     buffer.iter_mut().for_each(|chunk| {
@@ -33,6 +33,7 @@ pub fn decrypt_aes_cbc(buffer: &[u8], key_hex: &str, iv_hex: &str) -> Result<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::GenericImageView;
     use std::fs;
 
     #[test]
@@ -41,11 +42,9 @@ mod tests {
         let iv = "e8c7e042d6ba9fb85c128d5ceb64b82f";
 
         let image_path = "./tests/assets/fuz-encrypted.jpeg";
-        let output_path = "./tests/output/fuz-decrypted.jpeg";
-
         let encrypted_data = fs::read(image_path).expect("Failed to read the encrypted image file");
         let decrypted_data = decrypt_aes_cbc(&encrypted_data, key, iv).unwrap();
-
-        fs::write(output_path, &decrypted_data).expect("Failed to write the decrypted image file");
+        let image = image::load_from_memory(&decrypted_data).unwrap();
+        assert_ne!(image.dimensions(), (0, 0));
     }
 }

@@ -1,58 +1,66 @@
-use anyhow::{bail, Context, Result};
-use manga::pipeline::{EpisodePipeline, EpisodePipelineBuilder, SeriesPipeline, WriterConifg};
-use manga::viewer::fuz::{self, pipeline::Pipeline as FuzPipeline};
-use manga::viewer::giga::{self, pipeline::Pipeline as GigaPipeline};
-use manga::viewer::kadocomi;
-use manga::{progress::ProgressConfig, viewer::ViewerWebsite};
+use std::path::PathBuf;
 
+use anyhow::{bail, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use manga::{
+    pipeline::{EpisodePipeline, EpisodePipelineBuilder, SeriesPipeline, WriterConfig},
+    progress::ProgressConfig,
+    viewer::{
+        detect::detect, giga::pipeline::Pipeline as GigaPipeline,
+        kadocomi::pipeline::Pipeline as KadokomiPipeline, ViewerType,
+    },
+};
 use url::Url;
 
 #[derive(Debug, Clone, Parser)]
 struct Cli {
     #[command(subcommand)]
-    command: Target,
+    command: Command,
 }
 
 #[derive(Debug, Clone, Subcommand)]
-enum Target {
-    Episode {
-        /// Episode URL of the manga
-        url: Url,
-
-        /// Output directory.
-        /// New directory or file will be created in this directory.
-        #[arg(short, long)]
-        output_dir: String,
-
-        /// Save as
-        #[arg(short, long, default_value = "raw")]
-        save_as: SaveFormat,
-
-        /// Image format
-        #[arg(short, long, default_value = "png")]
-        format: ImageFormat,
-    },
-    Series {
-        /// Series URL of the manga
-        url: Url,
-
-        /// Output directory.
-        /// New directory or file will be created in this directory.
-        #[arg(short, long)]
-        output_dir: String,
-
-        /// Save as
-        #[arg(short, long, default_value = "raw")]
-        save_as: SaveFormat,
-
-        /// Image format
-        #[arg(short, long, default_value = "webp")]
-        format: ImageFormat,
-    },
+enum Command {
+    Episode(EpisodeArgs),
+    Series(SeriesArgs),
 }
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, clap::Args)]
+struct EpisodeArgs {
+    /// Episode URL. The viewer is detected from the page contents.
+    url: Url,
+
+    /// Directory in which a new directory or archive will be created.
+    #[arg(short, long)]
+    output_dir: PathBuf,
+
+    /// Output container.
+    #[arg(short, long, default_value = "raw")]
+    save_as: SaveFormat,
+
+    /// Output image format.
+    #[arg(short, long, default_value = "png")]
+    format: ImageFormat,
+}
+
+#[derive(Debug, Clone, clap::Args)]
+struct SeriesArgs {
+    /// Episode URL within the series. The viewer is detected from the page contents.
+    url: Url,
+
+    /// Directory in which the downloaded episodes will be created.
+    #[arg(short, long)]
+    output_dir: PathBuf,
+
+    /// Output container.
+    #[arg(short, long, default_value = "raw")]
+    save_as: SaveFormat,
+
+    /// Output image format.
+    #[arg(short, long, default_value = "webp")]
+    format: ImageFormat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum ImageFormat {
     Png,
     #[value(alias = "jpg")]
@@ -60,139 +68,127 @@ enum ImageFormat {
     Webp,
 }
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum SaveFormat {
     Raw,
     Zip,
     Cbz,
-    // Pdf,
 }
 
-fn get_save_format(save: SaveFormat) -> manga::pipeline::SaveFormat {
-    match save {
-        SaveFormat::Raw => manga::pipeline::SaveFormat::Raw,
-        SaveFormat::Zip => manga::pipeline::SaveFormat::Zip {
-            compression_method: zip::CompressionMethod::Deflated,
-            extension: None,
-        },
-        SaveFormat::Cbz => manga::pipeline::SaveFormat::Zip {
-            compression_method: zip::CompressionMethod::Deflated,
-            extension: Some("cbz".to_string()),
-        },
-        // SaveFormat::Pdf => manga::pipeline::SaveFormat::Pdf,
+impl From<SaveFormat> for manga::pipeline::SaveFormat {
+    fn from(value: SaveFormat) -> Self {
+        match value {
+            SaveFormat::Raw => Self::Raw,
+            SaveFormat::Zip => Self::Zip {
+                compression_method: zip::CompressionMethod::Deflated,
+                extension: None,
+            },
+            SaveFormat::Cbz => Self::Zip {
+                compression_method: zip::CompressionMethod::Deflated,
+                extension: Some("cbz".to_owned()),
+            },
+        }
     }
 }
 
-fn get_image_format(format: ImageFormat) -> image::ImageFormat {
-    match format {
-        ImageFormat::Png => image::ImageFormat::Png,
-        ImageFormat::Jpeg => image::ImageFormat::Jpeg,
-        ImageFormat::Webp => image::ImageFormat::WebP,
+impl From<ImageFormat> for image::ImageFormat {
+    fn from(value: ImageFormat) -> Self {
+        match value {
+            ImageFormat::Png => Self::Png,
+            ImageFormat::Jpeg => Self::Jpeg,
+            ImageFormat::Webp => Self::WebP,
+        }
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::parse();
+    match Cli::parse().command {
+        Command::Episode(args) => download_episode(args).await,
+        Command::Series(args) => download_series(args).await,
+    }
+}
 
-    println!("{:?}", cli);
-
+async fn download_episode(args: EpisodeArgs) -> Result<()> {
+    let detected = detect(&args.url).await?;
+    let writer = WriterConfig::new(args.save_as.into(), args.format.into());
     let progress = ProgressConfig::default();
 
-    match cli.command {
-        Target::Episode {
-            url,
-            output_dir,
-            save_as,
-            format,
-        } => {
-            let host = url.host_str().context("Url must have host")?;
-
-            let save_format = get_save_format(save_as);
-            let image_format = get_image_format(format);
-
-            if let Some(website) = giga::viewer::Website::lookup(host) {
-                let pipe = GigaPipeline::default()
-                    .set_website(website)
-                    .set_progress(progress)
-                    .set_writer_config(WriterConifg::new(save_format, image_format));
-
-                pipe.download_in(&url, &output_dir).await?;
-
-                return Ok(());
-            }
-
-            if let Some(website) = fuz::viewer::Website::lookup(host) {
-                let pipe = FuzPipeline::default()
-                    .set_website(website)
-                    .set_progress(progress)
-                    .set_writer_config(WriterConifg::new(save_format, image_format));
-
-                pipe.download_in(&url, &output_dir).await?;
-
-                return Ok(());
-            }
-
-            if let Some(website) = kadocomi::viewer::Website::lookup(host) {
-                let pipe = kadocomi::pipeline::Pipeline::default()
-                    .set_website(website)
-                    .set_progress(progress)
-                    .set_writer_config(WriterConifg::new(save_format, image_format));
-
-                pipe.download_in(&url, &output_dir).await?;
-
-                return Ok(());
-            }
-
-            bail!("Website not supported: {}", host);
+    match detected.viewer_type() {
+        ViewerType::Giga => {
+            GigaPipeline::for_base_url(detected.base_url().clone())
+                .set_progress(progress)
+                .set_writer_config(writer)
+                .download_in(&args.url, &args.output_dir)
+                .await
         }
-        Target::Series {
-            url,
-            output_dir,
-            save_as,
-            format,
-        } => {
-            let host = url.host_str().context("Url must have host")?;
-
-            let save_format = get_save_format(save_as);
-            let image_format = get_image_format(format);
-
-            if let Some(website) = giga::viewer::Website::lookup(host) {
-                let pipe = GigaPipeline::default()
-                    .set_website(website)
-                    .set_progress(progress)
-                    .set_writer_config(WriterConifg::new(save_format, image_format));
-
-                pipe.download_series(&url, &output_dir).await?;
-
-                return Ok(());
-            }
-
-            if let Some(website) = fuz::viewer::Website::lookup(host) {
-                let pipe = FuzPipeline::default()
-                    .set_website(website)
-                    .set_progress(progress)
-                    .set_writer_config(WriterConifg::new(save_format, image_format));
-
-                // pipe.download_series(&url, &output_dir).await?;
-                todo!();
-
-                return Ok(());
-            }
-
-            if let Some(website) = kadocomi::viewer::Website::lookup(host) {
-                let pipe = kadocomi::pipeline::Pipeline::default()
-                    .set_website(website)
-                    .set_progress(progress)
-                    .set_writer_config(WriterConifg::new(save_format, image_format));
-
-                // pipe.download_series(&url, &output_dir).await?;
-                todo!();
-
-                return Ok(());
-            }
-
-            bail!("Website not supported: {}", host);
+        ViewerType::Kadokomi => {
+            KadokomiPipeline::for_base_url(detected.base_url().clone())
+                .set_progress(progress)
+                .set_writer_config(writer)
+                .download_in(&args.url, &args.output_dir)
+                .await
         }
-    };
+        viewer => bail!("the detected {viewer:?} viewer is not enabled in this CLI"),
+    }
+}
+
+async fn download_series(args: SeriesArgs) -> Result<()> {
+    let detected = detect(&args.url).await?;
+    let writer = WriterConfig::new(args.save_as.into(), args.format.into());
+
+    match detected.viewer_type() {
+        ViewerType::Giga => {
+            GigaPipeline::for_base_url(detected.base_url().clone())
+                .set_progress(ProgressConfig::default())
+                .set_writer_config(writer)
+                .download_series(&args.url, &args.output_dir)
+                .await
+        }
+        ViewerType::Kadokomi => {
+            bail!("series download is not supported for the detected Kadokomi viewer")
+        }
+        viewer => bail!("the detected {viewer:?} viewer is not enabled in this CLI"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_episode_command() {
+        let cli = Cli::try_parse_from([
+            "manga",
+            "episode",
+            "https://example.com/episode/1",
+            "--output-dir",
+            "downloads",
+            "--save-as",
+            "cbz",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Command::Episode(args) => assert_eq!(args.format, ImageFormat::Png),
+            Command::Series(_) => panic!("expected episode command"),
+        }
+    }
+
+    #[test]
+    fn series_defaults_to_webp() {
+        let cli = Cli::try_parse_from([
+            "manga",
+            "series",
+            "https://example.com/episode/1",
+            "--output-dir",
+            "downloads",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Command::Series(args) => assert_eq!(args.format, ImageFormat::Webp),
+            Command::Episode(_) => panic!("expected series command"),
+        }
+    }
 }
