@@ -68,32 +68,11 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
     --output-dir ./output
 ```
 
-## Supported Websites
+## Supported Viewers
 
 - [x] [ChojuGiga Viewer](https://hatena.co.jp/solutions/gigaviewer) family: episode and series downloads are supported
-  - [Shonen Jump Plus](https://shonenjumpplus.com)
-  - [Tonari no Young Jump](https://tonarinoyj.jp)
-  - [Shonen Jump Magazine Pocket](https://pocket.shonenmagazine.com)
-  - [Comic Days](https://comic-days.com)
-  - [Kurage Bunch](https://kuragebunch.com)
-  - [Comic Heros](https://viewer.heros-web.com)
-  - [Comic Border](https://comicborder.com)
-  - [Comic Gardo](https://comic-gardo.com)
-  - [Comic Zenon](https://comic-zenon.com)
-  - [Magcomi](https://magcomi.com)
-  - [Comic Action](https://comic-action.com)
-  - [Comic Trail](https://comic-trail.com)
-  - [Comic Growl](https://comic-growl.com)
-  - [Feelweb](https://feelweb.jp)
-  - [Sunday Webry](https://www.sunday-webry.com)
-  - [Comic Ogyaaa](https://comic-ogyaaa.com)
-  - [Comic Earthstar](https://comic-earthstar.com)
-  - [Ourfeel](https://ourfeel.jp)
-  - [Ichijin Plus](https://ichijin-plus.com) (now detected as a GigaViewer-compatible site)
 - [x] [Kadokomi (former ComicWalker)](https://comic-walker.com): episode download is supported
 - [x] [Comici Viewer](https://comici.co.jp/business/comici-plus) family: episode and series downloads are supported
-  - [Bibibi Comic](https://bibibi-comic.com)
-  - [Young Champion](https://youngchampion.jp)
 - [ ] [Comic FUZ](https://comic-fuz.com): deferred because its protobuf API is currently unstable; library code is available behind the `fuz` feature
 - [ ] [Manga Library Z](https://www.mangaz.com): deferred; library code is available behind the `mangaz` feature
 - [ ] [Piccoma](https://piccoma.com)
