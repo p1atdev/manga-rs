@@ -73,6 +73,8 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
   - [Ourfeel](https://ourfeel.jp)
   - [Ichijin Plus](https://ichijin-plus.com) (now detected as a GigaViewer-compatible site)
 - [x] [Kadokomi (former ComicWalker)](https://comic-walker.com): episode download is supported
+- [x] Comici Viewer family: episode downloads are supported
+  - [Bibibi Comic](https://bibibi-comic.com)
 - [ ] [Comic FUZ](https://comic-fuz.com): deferred because its protobuf API is currently unstable; library code is available behind the `fuz` feature
 - [ ] [Manga Library Z](https://www.mangaz.com): deferred; library code is available behind the `mangaz` feature
 - [ ] [Piccoma](https://piccoma.com)
@@ -84,6 +86,6 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
 - `crates/manga/src/pipeline.rs`: shared concurrent fetch, solve, and write orchestration.
 - `crates/manga/src/io`: raw-directory and ZIP/CBZ writers.
 
-The `manga` crate enables `giga` and `kadokomi` by default. Live-site smoke tests
+The `manga` crate enables `comici`, `giga`, and `kadokomi` by default. Live-site smoke tests
 are ignored during normal test runs; fixture-based parsing and image-processing
 tests run offline.

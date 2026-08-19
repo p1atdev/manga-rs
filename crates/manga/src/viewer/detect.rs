@@ -1,5 +1,5 @@
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
-#[cfg(any(feature = "giga", feature = "kadokomi"))]
+#[cfg(any(feature = "comici", feature = "giga", feature = "kadokomi"))]
 use scraper::{Html, Selector};
 use thiserror::Error;
 use url::Url;
@@ -52,9 +52,18 @@ pub async fn detect(url: &Url) -> Result<DetectedViewer, DetectionError> {
 }
 
 pub fn detect_html(html: &str) -> Result<ViewerType, DetectionError> {
-    #[cfg(any(feature = "giga", feature = "kadokomi"))]
+    #[cfg(any(feature = "comici", feature = "giga", feature = "kadokomi"))]
     let document = Html::parse_document(html);
     let _ = html;
+
+    #[cfg(feature = "comici")]
+    {
+        let selector = Selector::parse("div#comici-viewer[data-comici-viewer-id]")
+            .expect("the Comici viewer selector is valid");
+        if document.select(&selector).next().is_some() {
+            return Ok(ViewerType::Comici);
+        }
+    }
 
     #[cfg(feature = "giga")]
     {
@@ -126,6 +135,13 @@ fn base_url(url: &Url) -> Result<Url, DetectionError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "comici")]
+    #[test]
+    fn detects_comici_from_viewer_container() {
+        let html = r#"<div id="comici-viewer" data-comici-viewer-id="viewer-id"></div>"#;
+        assert_eq!(detect_html(html).unwrap(), ViewerType::Comici);
+    }
 
     #[cfg(feature = "giga")]
     #[test]

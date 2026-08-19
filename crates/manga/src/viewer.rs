@@ -1,3 +1,5 @@
+#[cfg(feature = "comici")]
+pub mod comici;
 pub mod detect;
 #[cfg(feature = "fuz")]
 pub mod fuz;
@@ -21,6 +23,8 @@ use crate::{auth::Auth, error::ClientError};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ViewerType {
+    #[cfg(feature = "comici")]
+    Comici,
     #[cfg(feature = "giga")]
     Giga,
     #[cfg(feature = "kadokomi")]

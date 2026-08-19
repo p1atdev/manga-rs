@@ -6,8 +6,8 @@ use manga::{
     pipeline::{EpisodePipeline, EpisodePipelineBuilder, SeriesPipeline, WriterConfig},
     progress::ProgressConfig,
     viewer::{
-        ViewerType, detect::detect, giga::pipeline::Pipeline as GigaPipeline,
-        kadocomi::pipeline::Pipeline as KadokomiPipeline,
+        ViewerType, comici::pipeline::Pipeline as ComiciPipeline, detect::detect,
+        giga::pipeline::Pipeline as GigaPipeline, kadocomi::pipeline::Pipeline as KadokomiPipeline,
     },
 };
 use url::Url;
@@ -115,6 +115,13 @@ async fn download_episode(args: EpisodeArgs) -> Result<()> {
     let progress = ProgressConfig::default();
 
     match detected.viewer_type() {
+        ViewerType::Comici => {
+            ComiciPipeline::for_base_url(detected.base_url().clone())
+                .set_progress(progress)
+                .set_writer_config(writer)
+                .download_in(&args.url, &args.output_dir)
+                .await
+        }
         ViewerType::Giga => {
             GigaPipeline::for_base_url(detected.base_url().clone())
                 .set_progress(progress)
@@ -138,6 +145,9 @@ async fn download_series(args: SeriesArgs) -> Result<()> {
     let writer = WriterConfig::new(args.save_as.into(), args.format.into());
 
     match detected.viewer_type() {
+        ViewerType::Comici => {
+            bail!("series download is not supported for the detected Comici viewer")
+        }
         ViewerType::Giga => {
             GigaPipeline::for_base_url(detected.base_url().clone())
                 .set_progress(ProgressConfig::default())

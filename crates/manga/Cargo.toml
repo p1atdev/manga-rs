@@ -9,8 +9,9 @@ path = "src/lib.rs"
 
 
 [features]
-default = ["giga", "kadokomi"]
+default = ["comici", "giga", "kadokomi"]
 
+comici = []
 giga = ["dep:feed-rs"]
 kadokomi = ["dep:hex"]
 fuz = ["dep:prost", "dep:prost-build", "dep:aes", "dep:hex", "dep:cbc", "dep:cipher"]
