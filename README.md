@@ -16,16 +16,37 @@ cargo install --git https://github.com/p1atdev/manga-rs cli
 
 ```bash
 ❯ manga --help
+Download manga from supported official web viewers
+
 Usage: manga <COMMAND>
 
 Commands:
-  episode
-  series
+  episode  Download a single episode
+  series   Download the available episodes in a GigaViewer series
   help     Print this message or the help of the given subcommand(s)
 
 Options:
-  -h, --help  Print help
+  -h, --help     Print help
+  -V, --version  Print version
 ```
+
+When working from this repository, the project-local Cargo alias runs the CLI
+without installing it:
+
+```bash
+cargo manga --help
+cargo manga episode <URL>
+```
+
+Downloads are saved as WebP images in a new directory under the current
+directory by default. The common download options are:
+
+- `-o, --output-dir <DIR>`: parent directory for downloaded output (default: `.`)
+- `-s, --save-as <FORMAT>`: `raw`, `zip`, or `cbz` (default: `raw`)
+- `-f, --format <FORMAT>`: `png`, `jpeg`, or `webp` (default: `webp`)
+- `--no-progress`: disable progress bars
+- `-j, --jobs <COUNT>`: maximum concurrent image-processing jobs (default: logical CPU count)
+- `--connections <COUNT>`: maximum concurrent network requests (default: `8`)
 
 ### Examples
 
@@ -37,17 +58,14 @@ Options:
 ```bash
 manga episode https://tonarinoyj.jp/episode/2550912964641693231 \
     --output-dir ./output \
-    --save-as cbz \
-    --format webp
+    --save-as cbz
 ```
 
 - download available multiple episodes as image files
 
 ```bash
 manga series https://shonenjumpplus.com/episode/17106371853091617526 \
-    --output-dir ./output \
-    --save-as raw \
-    --format webp
+    --output-dir ./output
 ```
 
 ## Supported Websites

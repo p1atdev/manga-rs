@@ -1,0 +1,2 @@
+[alias]
+manga = "run --package cli --bin manga --"
