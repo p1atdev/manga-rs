@@ -79,7 +79,7 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
 - [x] [Comici Viewer](https://comici.co.jp/business/comici-plus) family: episode and series downloads are supported
 - [ ] [Comic FUZ](https://comic-fuz.com): deferred because its protobuf API is currently unstable; library code is available behind the `fuz` feature
 - [ ] [Manga Library Z](https://www.mangaz.com): deferred; library code is available behind the `mangaz` feature
-- [ ] [Piccoma](https://piccoma.com)
+- [ ] [Piccoma](https://piccoma.com): experimental guest-free episode support is available to library users behind the `piccoma` feature; CLI detection is not enabled
 
 ## Architecture
 
@@ -91,3 +91,14 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
 The `manga` crate enables `comici`, `giga`, and `kadokomi` by default. Live-site smoke tests
 are ignored during normal test runs; fixture-based parsing and image-processing
 tests run offline.
+
+### Experimental Piccoma library support
+
+Enable the `manga` crate's `piccoma` feature and use
+`manga::viewer::piccoma::Pipeline` with the shared `EpisodePipeline` trait.
+The pipeline checks that the episode is explicitly marked free in the guest
+listing before opening its viewer. Waiting, paid, and ambiguous episodes are
+not supported. Its HTML parser depends on the current viewer format; live
+smoke tests are ignored by default. Image restoration has been exercised
+against synthetic fixtures and live page dimensions, but pixel equality to
+the official viewer is not yet independently verified.
