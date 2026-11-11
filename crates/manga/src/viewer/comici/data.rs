@@ -1,71 +1,9 @@
-use std::fmt;
-
-use serde::{Deserialize, Deserializer, de};
+use serde::Deserialize;
 use url::Url;
 
 use crate::data::{IndexNumber, MangaEpisode, MangaPage};
 
-pub const GRID_SIZE: usize = 4;
-pub const TILE_COUNT: usize = GRID_SIZE * GRID_SIZE;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Scramble([usize; TILE_COUNT]);
-
-impl Scramble {
-    pub fn tile_sources(&self) -> &[usize; TILE_COUNT] {
-        &self.0
-    }
-}
-
-impl<'de> Deserialize<'de> for Scramble {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct ScrambleVisitor;
-
-        impl<'de> de::Visitor<'de> for ScrambleVisitor {
-            type Value = Scramble;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a JSON-encoded permutation of the 16 Comici tiles")
-            }
-
-            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                let sources: Vec<usize> = serde_json::from_str(value).map_err(E::custom)?;
-                let sources: [usize; TILE_COUNT] =
-                    sources.try_into().map_err(|sources: Vec<_>| {
-                        E::custom(format!(
-                            "Comici scramble must contain {TILE_COUNT} entries, got {}",
-                            sources.len()
-                        ))
-                    })?;
-
-                let mut seen = [false; TILE_COUNT];
-                for source in sources {
-                    if source >= TILE_COUNT {
-                        return Err(E::custom(format!(
-                            "Comici scramble tile index {source} is out of range"
-                        )));
-                    }
-                    if seen[source] {
-                        return Err(E::custom(format!(
-                            "Comici scramble tile index {source} occurs more than once"
-                        )));
-                    }
-                    seen[source] = true;
-                }
-
-                Ok(Scramble(sources))
-            }
-        }
-
-        deserializer.deserialize_str(ScrambleVisitor)
-    }
-}
+pub use manga_image::viewer::comici::data::{GRID_SIZE, Scramble, TILE_COUNT};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]

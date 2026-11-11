@@ -1,0 +1,8 @@
+{
+  "name": "manga-image-wasm-local-tests",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "miniflare": "4.20260730.0"
+  }
+}

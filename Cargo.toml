@@ -1,3 +1,3 @@
 [workspace]
 resolver = "3"
-members = ["crates/cli", "crates/manga"]
+members = ["crates/cli", "crates/manga", "crates/manga-image", "crates/manga-image-wasm"]

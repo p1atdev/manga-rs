@@ -1,0 +1,28 @@
+[package]
+name = "manga-image"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[features]
+default = []
+comici = []
+magapoke = []
+kadokomi = ["dep:hex"]
+fuz = ["dep:aes", "dep:cbc", "dep:hex"]
+direct-sort = []
+
+[dependencies]
+anyhow = "1.0.104"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
+crc32fast = "1.5"
+libwebp-sys = "0.9.6"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+mozjpeg-sys = { version = "=2.2.3", default-features = false }
+aes = { version = "0.9.2", optional = true }
+cbc = { version = "0.2.1", optional = true }
+hex = { version = "0.4.3", optional = true }
+
+[build-dependencies]
+cc = "1"
