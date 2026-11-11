@@ -156,7 +156,7 @@ impl Episode {
 
     pub fn image_base_url(&self) -> Result<Url> {
         let url = Url::parse(&self.location.base)?
-            .join(format!("{}/", &self.location.scramble_dir).as_str())?;
+            .join(format!("{}/", self.location.scramble_dir).as_str())?;
         Ok(url)
     }
 }

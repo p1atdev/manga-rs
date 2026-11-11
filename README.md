@@ -77,9 +77,11 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
 - [x] [ChojuGiga Viewer](https://hatena.co.jp/solutions/gigaviewer) family: episode and series downloads are supported
 - [x] [Kadokomi (former ComicWalker)](https://comic-walker.com): episode download is supported
 - [x] [Comici Viewer](https://comici.co.jp/business/comici-plus) family: episode and series downloads are supported
-- [ ] [Comic FUZ](https://comic-fuz.com): deferred because its protobuf API is currently unstable; library code is available behind the `fuz` feature
+- [ ] [Comic FUZ](https://comic-fuz.com): experimental guest-free viewer v2 library pipeline is available behind the `fuz` feature; CLI detection is not enabled
 - [ ] [Manga Library Z](https://www.mangaz.com): deferred; library code is available behind the `mangaz` feature
-- [ ] [Piccoma](https://piccoma.com)
+- [ ] [Piccoma](https://piccoma.com): experimental guest-free episode support is available to library users behind the `piccoma` feature; CLI detection is not enabled
+- [ ] [Magazine Pocket](https://pocket.shonenmagazine.com): experimental guest-free episode support is available to library users behind the `magapoke` feature; CLI detection is not enabled
+- [ ] [YanMaga](https://yanmaga.jp): experimental anonymous full-episode support is available to library users behind the `yanmaga` feature; CLI detection is not enabled
 
 ## Architecture
 
@@ -106,3 +108,42 @@ restoration. Each measurement interval lasts at least 50 ms. It includes the
 same input cloning in both variants and excludes network and file writes.
 The confidence intervals are descriptive and can be affected by shared-host
 noise. The fixture's provenance is in the adjacent metadata file.
+
+### Experimental Piccoma library support
+
+Enable the `manga` crate's `piccoma` feature and use
+`manga::viewer::piccoma::Pipeline` with the shared `EpisodePipeline` trait.
+The pipeline checks that the episode is explicitly marked free in the guest
+listing before opening its viewer. Waiting, paid, and ambiguous episodes are
+not supported. Its HTML parser depends on the current viewer format; live
+smoke tests are ignored by default. Image restoration has been exercised
+against synthetic fixtures and live page dimensions, but pixel equality to
+the official viewer is not yet independently verified.
+
+### Experimental Magazine Pocket library support
+
+Enable the `manga` crate's `magapoke` feature and use
+`manga::viewer::magapoke::Pipeline` with the shared `EpisodePipeline` trait.
+The guest detail API must explicitly confirm that an episode is free before
+the viewer is requested; ticketed, subscription and ambiguous episodes are
+not supported. Images with transparency are rejected until their official
+canvas compositing is reproduced. Episode output names currently use the
+episode ID. Live tests are ignored by default.
+
+### Experimental YanMaga library support
+
+Enable the `manga` crate's `yanmaga` feature and use
+`manga::viewer::yanmaga::Pipeline` with the shared `EpisodePipeline` trait.
+The pipeline uses an anonymous cookie session and rejects viewer responses
+that provide only a trial or deny access. Episode output names currently use
+the episode ID. The viewer protocol may change; live tests are ignored by
+default. The feature enables reqwest's `cookies` support.
+
+### Experimental COMIC FUZ viewer v2
+
+With the `fuz` feature, use `manga::viewer::fuz::v2::Pipeline::for_work`
+and the shared `EpisodePipeline` trait. The work ID is required so the
+pipeline can confirm the chapter is explicitly guest-free before requesting
+its viewer. Each episode uses an isolated anonymous image-token session.
+The legacy FUZ API remains available. The feature enables reqwest cookies.
+Live tests are ignored by default and the viewer protocol may change.
