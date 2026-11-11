@@ -10,3 +10,6 @@ pub mod progress;
 pub mod solver;
 pub(crate) mod utils;
 pub mod viewer;
+
+#[cfg(all(test, any(feature = "comici", feature = "giga")))]
+pub(crate) mod benchmark;
