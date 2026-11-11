@@ -135,9 +135,15 @@ PNG tile restoration losslessly re-encodes non-indexed 8-bit or 16-bit grayscale
 grayscale-alpha, RGB, and RGBA images. It preserves pixel values, bit depth, and
 alpha, but cannot yet preserve ancillary metadata. PNGs with ancillary chunks,
 palettes, or unsupported bit depths are held with a reason instead of silently
-dropping metadata. PNG chunk CRCs are checked. Scrambled WebP restoration is
-not supported while WebP re-encoding is paused; an unscrambled WebP can still
-be passed through `Preserve` unchanged. Limits inherent in the image libraries,
+dropping metadata. PNG chunk CRCs are checked. The strict API still holds
+scrambled WebP; an unscrambled WebP can pass through `Preserve` unchanged.
+An opt-in WebP fallback is available through
+`process_provider_image_with_fallback_checked` and the CLI's `--fallback webp`.
+It retains directly restorable JPEGs and unchanged WebP, and encodes other
+supported pages as WebP. Lossless quality controls compression effort and
+preserves decoded pixels; lossy quality controls visual fidelity. Unsupported
+metadata, animation and 16-bit PNG are reported rather than silently discarded.
+Validated RGB JPEG ICC profiles are preserved in WebP. Limits inherent in the image libraries,
 integer representation, and available memory still apply.
 
 Enable JPEG coefficient processing in a consuming crate with:

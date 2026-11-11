@@ -10,9 +10,16 @@
 
 use std::fmt;
 
+mod fallback;
 mod jpeg;
+mod piccoma;
 mod png;
 mod webp;
+mod yanmaga;
+pub use fallback::{
+    WebpMode, WebpOptions, process_direct_with_fallback,
+    process_provider_image_with_fallback_checked,
+};
 
 /// Supported source and output image formats.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -314,6 +321,7 @@ pub fn process_direct(
 /// Provider-specific metadata for processing already downloaded bytes. This API never fetches
 /// images. Select a raw variant only when the provider metadata confirms no encryption.
 /// Secret-bearing variants intentionally do not implement `Debug`.
+#[derive(Clone, Copy)]
 pub enum ProviderImage<'a> {
     Giga,
     #[cfg(feature = "comici")]
@@ -337,6 +345,10 @@ pub enum ProviderImage<'a> {
     },
     Piccoma {
         scrambled: bool,
+    },
+    /// Piccoma scrambled page with the provider-derived shuffle seed.
+    PiccomaSeed {
+        seed: &'a str,
     },
     /// Empty tables indicate an unobfuscated page; other layouts are currently unsupported.
     Yanmaga {
@@ -507,6 +519,10 @@ pub fn process_provider_image(
         ProviderImage::Piccoma { scrambled: true } => Err(DirectError::new(
             DirectErrorKind::Unsupported,
             "scrambled Piccoma images cannot yet be restored without changing format or recompressing",
+        )),
+        ProviderImage::PiccomaSeed { .. } => Err(DirectError::new(
+            DirectErrorKind::Unsupported,
+            "scrambled Piccoma requires raster restoration",
         )),
         ProviderImage::Yanmaga {
             source,

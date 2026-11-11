@@ -1714,6 +1714,7 @@ dependencies = [
 name = "manga-image-wasm"
 version = "0.1.0"
 dependencies = [
+ "image",
  "manga-image",
  "serde",
  "serde_json",

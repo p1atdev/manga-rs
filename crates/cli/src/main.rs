@@ -34,7 +34,7 @@ enum Command {
     /// Download the available episodes in a supported series.
     Series(SeriesArgs),
 
-    /// Restore a local image while preserving its format.
+    /// Restore a local image, optionally using WebP fallback.
     Decode(local::DecodeArgs),
 
     /// Decrypt a local image without re-encoding it.

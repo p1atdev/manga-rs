@@ -9,8 +9,9 @@ use clap::{Args, Subcommand};
 use image::{DynamicImage, ImageFormat};
 use manga::{
     direct::{
-        DirectError, DirectErrorKind, DirectFormat, DirectTransform, ProcessedPage,
-        decode_png_for_restoration, process_direct,
+        DirectError, DirectErrorKind, DirectFormat, DirectTransform, ProcessedPage, ProviderImage,
+        WebpMode, WebpOptions, decode_png_for_restoration, process_direct,
+        process_direct_with_fallback, process_provider_image_with_fallback_checked,
     },
     solver::ImageSolver,
     viewer::{comici, fuz, kadocomi, magapoke, piccoma, yanmaga},
@@ -18,9 +19,18 @@ use manga::{
 
 #[derive(Debug, Clone, Args)]
 pub struct DecodeArgs {
-    /// Require the format-preserving direct backend; fail if unavailable.
+    /// Require the direct backend unless --fallback is supplied.
     #[arg(long, global = true)]
     direct: bool,
+    /// Enable WebP fallback. Output extension must match the actual format.
+    #[arg(long, global = true, value_parser = ["webp"])]
+    fallback: Option<String>,
+    /// Lossless WebP compression effort (0-100, default 75).
+    #[arg(long, global = true, requires = "fallback", conflicts_with = "lossy", value_parser = clap::value_parser!(u8).range(0..=100))]
+    lossless: Option<u8>,
+    /// Lossy WebP visual quality (0-100).
+    #[arg(long, global = true, requires = "fallback", conflicts_with = "lossless", value_parser = clap::value_parser!(u8).range(0..=100))]
+    lossy: Option<u8>,
     #[command(subcommand)]
     provider: DecodeProvider,
 }
@@ -136,6 +146,19 @@ pub fn decrypt(args: DecryptArgs) -> Result<()> {
 }
 
 pub fn decode(args: DecodeArgs) -> Result<()> {
+    if args.fallback.is_some() {
+        let options = match args.lossy {
+            Some(quality) => WebpOptions {
+                mode: WebpMode::Lossy,
+                quality,
+            },
+            None => WebpOptions {
+                mode: WebpMode::Lossless,
+                quality: args.lossless.unwrap_or(75),
+            },
+        };
+        return decode_with_fallback(args.provider, options);
+    }
     if args.direct
         && matches!(
             &args.provider,
@@ -235,6 +258,145 @@ pub fn decode(args: DecodeArgs) -> Result<()> {
             })
         }
     }
+}
+
+fn decode_with_fallback(provider: DecodeProvider, options: WebpOptions) -> Result<()> {
+    let (files, page) = match provider {
+        DecodeProvider::Giga(files) => {
+            let bytes = fs::read(&files.input)?;
+            let page = process_provider_image_with_fallback_checked(
+                &bytes,
+                ProviderImage::Giga,
+                None,
+                options,
+            )
+            .map_err(direct_error)?;
+            (files, page)
+        }
+        DecodeProvider::Comici(args) => {
+            let bytes = fs::read(&args.files.input)?;
+            let scramble: comici::data::Scramble =
+                serde_json::from_value(serde_json::Value::String(args.scramble))
+                    .context("invalid Comici scramble")?;
+            let page = process_provider_image_with_fallback_checked(
+                &bytes,
+                ProviderImage::Comici {
+                    scramble: &scramble,
+                },
+                None,
+                options,
+            )
+            .map_err(direct_error)?;
+            (args.files, page)
+        }
+        DecodeProvider::Piccoma(args) => {
+            let bytes = fs::read(&args.files.input)?;
+            let page = process_provider_image_with_fallback_checked(
+                &bytes,
+                ProviderImage::PiccomaSeed { seed: &args.seed },
+                None,
+                options,
+            )
+            .map_err(direct_error)?;
+            (args.files, page)
+        }
+        DecodeProvider::Magapoke(args) => {
+            let bytes = fs::read(&args.files.input)?;
+            let (w, h) = image_dimensions(&bytes)?;
+            ensure!(
+                w >= 32 && h >= 32,
+                "unsupported: Magazine Pocket dimensions must be at least 32 pixels"
+            );
+            let format = supported_format(&bytes)?;
+            if matches!(format, ImageFormat::Png | ImageFormat::WebP) {
+                let mut reader = image::ImageReader::with_format(Cursor::new(&bytes), format);
+                reader.no_limits();
+                let image = reader.decode()?;
+                ensure!(
+                    !image.color().has_alpha()
+                        || image.to_rgba16().pixels().all(|p| p[3] == u16::MAX),
+                    "unsupported: transparent Magazine Pocket image"
+                );
+            }
+            let p: Vec<usize> = match args.permutation {
+                Some(value) => {
+                    serde_json::from_str(&value).context("invalid Magapoke permutation")?
+                }
+                None => magapoke::tile_permutation(
+                    args.title.context("title required")?,
+                    args.episode.context("episode required")?,
+                    args.seed.as_deref().context("seed required")?,
+                )?
+                .to_vec(),
+            };
+            let page = process_direct_with_fallback(
+                &bytes,
+                DirectTransform::Tiles4x4 {
+                    tile_width: w / 32 * 8,
+                    tile_height: h / 32 * 8,
+                    source_by_destination: &p,
+                },
+                options,
+            )
+            .map_err(direct_error)?;
+            (args.files, page)
+        }
+        DecodeProvider::Yanmaga(args) => {
+            let source =
+                fs::read_to_string(&args.source_file).context("could not read source tile key")?;
+            let destination = fs::read_to_string(&args.destination_file)
+                .context("could not read destination tile key")?;
+            let bytes = fs::read(&args.files.input)?;
+            let page = process_provider_image_with_fallback_checked(
+                &bytes,
+                ProviderImage::Yanmaga {
+                    source: source.trim(),
+                    destination: destination.trim(),
+                },
+                None,
+                options,
+            )
+            .map_err(direct_error)?;
+            (args.files, page)
+        }
+        DecodeProvider::Kadokomi(args) => {
+            let key = fs::read_to_string(&args.key_file)?;
+            let bytes = fs::read(&args.files.input)?;
+            let page = process_provider_image_with_fallback_checked(
+                &bytes,
+                ProviderImage::KadokomiXor {
+                    key_hex: key.trim(),
+                },
+                None,
+                options,
+            )
+            .map_err(direct_error)?;
+            (args.files, page)
+        }
+        DecodeProvider::Fuz(args) => {
+            let key = fs::read_to_string(&args.key.key_file)?;
+            let iv = fs::read_to_string(&args.iv_file)?;
+            let bytes = fs::read(&args.key.files.input)?;
+            let page = process_provider_image_with_fallback_checked(
+                &bytes,
+                ProviderImage::FuzAesCbc {
+                    key_hex: key.trim(),
+                    iv_hex: iv.trim(),
+                },
+                None,
+                options,
+            )
+            .map_err(direct_error)?;
+            (args.key.files, page)
+        }
+    };
+    let format = match page.format() {
+        DirectFormat::Jpeg => ImageFormat::Jpeg,
+        DirectFormat::Png => ImageFormat::Png,
+        DirectFormat::WebP => ImageFormat::WebP,
+    };
+    check_extension(&files.output, format)?;
+    write_new(&files.output, page.bytes())
 }
 
 fn image_dimensions(bytes: &[u8]) -> Result<(u32, u32)> {
@@ -357,7 +519,7 @@ fn check_extension(path: &Path, format: ImageFormat) -> Result<()> {
     };
     ensure!(
         matches,
-        "output extension must match the input image format"
+        "output extension must match the actual output image format"
     );
     Ok(())
 }

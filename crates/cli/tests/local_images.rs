@@ -917,3 +917,99 @@ fn rejects_wrong_format_malformed_input_and_invalid_scramble() {
     assert!(!malformed.status.success());
     assert!(!temp.path("out.png").exists());
 }
+
+#[test]
+fn webp_fallback_cli_uses_output_format_and_validates_quality() {
+    let temp = TempDir::new();
+    let input = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/assets/comici-youngchampion-public-20261111.jpg");
+    let meta: serde_json::Value = serde_json::from_str(include_str!(
+        "assets/comici-youngchampion-public-20261111.permutation.json"
+    ))
+    .unwrap();
+    let scramble = meta["tile_sources"].to_string();
+    let output = temp.path("restored.webp");
+    let run = |extra: &[&str], path: &std::path::Path| {
+        Command::new(env!("CARGO_BIN_EXE_manga"))
+            .args(["decode", "--fallback", "webp"])
+            .args(extra)
+            .arg("comici")
+            .arg(&input)
+            .args(["--scramble", &scramble, "--output"])
+            .arg(path)
+            .output()
+            .unwrap()
+    };
+    assert!(run(&[], &output).status.success());
+    assert_eq!(
+        image::guess_format(&fs::read(&output).unwrap()).unwrap(),
+        image::ImageFormat::WebP
+    );
+    assert!(
+        !run(
+            &["--lossless", "75", "--lossy", "95"],
+            &temp.path("bad.webp")
+        )
+        .status
+        .success()
+    );
+    assert!(
+        !run(&["--lossless", "101"], &temp.path("bad.webp"))
+            .status
+            .success()
+    );
+    assert!(!run(&[], &temp.path("bad.jpg")).status.success());
+}
+
+#[test]
+fn magapoke_fallback_rejects_transparent_png() {
+    let temp = TempDir::new();
+    let input = temp.path("input.png");
+    image::RgbaImage::from_pixel(40, 40, image::Rgba([10, 20, 30, 0]))
+        .save(&input)
+        .unwrap();
+    let output = temp.path("output.webp");
+    let result = Command::new(env!("CARGO_BIN_EXE_manga"))
+        .args(["decode", "--fallback", "webp", "magapoke"])
+        .arg(&input)
+        .args([
+            "--permutation",
+            "[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]",
+            "--output",
+        ])
+        .arg(&output)
+        .output()
+        .unwrap();
+    assert!(!result.status.success());
+    assert!(!output.exists());
+}
+
+#[test]
+fn magapoke_webp_fallback_rejects_transparency_but_accepts_opaque_pages() {
+    let temp = TempDir::new();
+    for (alpha, expected_success) in [(0, false), (255, true)] {
+        let input = temp.path(&format!("input-{alpha}.webp"));
+        image::RgbaImage::from_pixel(40, 40, image::Rgba([10, 20, 30, alpha]))
+            .save(&input)
+            .unwrap();
+        let output = temp.path(&format!("output-{alpha}.webp"));
+        let result = Command::new(env!("CARGO_BIN_EXE_manga"))
+            .args(["decode", "--fallback", "webp", "magapoke"])
+            .arg(&input)
+            .args([
+                "--permutation",
+                "[1,0,2,3,4,5,6,7,8,9,10,11,12,13,14,15]",
+                "--output",
+            ])
+            .arg(&output)
+            .output()
+            .unwrap();
+        assert_eq!(
+            result.status.success(),
+            expected_success,
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert_eq!(output.exists(), expected_success);
+    }
+}

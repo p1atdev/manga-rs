@@ -9,4 +9,6 @@ fn binary_distribution_notices_are_bundled_with_the_cli_crate() {
     assert!(!include_bytes!("../THIRD_PARTY_NOTICES/mozjpeg-sys-2.2.3/ZLIB-NOTICE.txt").is_empty());
     assert!(!include_bytes!("../THIRD_PARTY_NOTICES/mozjpeg-sys-2.2.3/CRATE-LICENSE").is_empty());
     assert!(include_str!("../THIRD_PARTY_NOTICES/getpiccoma/LICENSE").contains("MIT License"));
+    assert!(!include_bytes!("../THIRD_PARTY_NOTICES/libwebp/COPYING").is_empty());
+    assert!(!include_bytes!("../THIRD_PARTY_NOTICES/libwebp/PATENTS").is_empty());
 }
