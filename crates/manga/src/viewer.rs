@@ -3,6 +3,8 @@ pub mod comici;
 pub mod detect;
 #[cfg(feature = "fuz")]
 pub mod fuz;
+#[cfg(feature = "yanmaga")]
+pub mod yanmaga;
 
 #[cfg(feature = "giga")]
 pub mod giga;
