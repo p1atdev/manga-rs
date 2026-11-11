@@ -246,6 +246,79 @@ mod test {
     }
 
     #[test]
+    fn public_jpeg_matches_independent_baseline_at_every_pixel() {
+        let jpeg = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/assets/giga-tonari-yj-public-20261111.jpg"
+        ));
+        let decoded = image::load_from_memory(jpeg).unwrap().into_rgb8();
+        let expected = Baseline::new().solve_buffer(decoded.clone()).unwrap();
+        let actual = Solver::new().solve_buffer(decoded).unwrap();
+        assert_eq!(actual.dimensions(), expected.dimensions());
+        assert!(
+            actual.as_raw() == expected.as_raw(),
+            "public JPEG restored pixels differ from the baseline"
+        );
+        let api = Solver::new()
+            .solve_from_bytes(jpeg.to_vec())
+            .unwrap()
+            .into_rgb8();
+        assert_eq!(api.dimensions(), expected.dimensions());
+        assert!(
+            api.as_raw() == expected.as_raw(),
+            "public JPEG byte API pixels differ from the baseline"
+        );
+    }
+
+    #[test]
+    #[ignore = "manual paired release benchmark on the public JPEG fixture"]
+    fn benchmark_giga_public_jpeg_paired_abba() {
+        use std::hint::black_box;
+        let jpeg = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/assets/giga-tonari-yj-public-20261111.jpg"
+        ));
+        let input = image::load_from_memory(jpeg).unwrap().into_rgb8();
+        let old = Baseline::new();
+        let new = Solver::new();
+        let expected = old.solve_buffer(input.clone()).unwrap();
+        let actual = new.solve_buffer(input.clone()).unwrap();
+        assert!(
+            actual.as_raw() == expected.as_raw(),
+            "public JPEG pixels differ"
+        );
+        crate::benchmark::paired(
+            "GIGA_PUBLIC_JPEG_BUFFER 800x1137",
+            || {
+                black_box(old.solve_buffer(black_box(input.clone())).unwrap());
+            },
+            || {
+                black_box(new.solve_buffer(black_box(input.clone())).unwrap());
+            },
+        );
+        let baseline = || {
+            let data = black_box(jpeg.to_vec());
+            let image = image::load_from_memory(&data).unwrap();
+            drop(data);
+            DynamicImage::ImageRgb8(old.solve_buffer(image.into_rgb8()).unwrap())
+        };
+        let actual = new.solve_from_bytes(jpeg.to_vec()).unwrap().into_rgb8();
+        assert!(
+            actual.as_raw() == expected.as_raw(),
+            "public JPEG byte API pixels differ"
+        );
+        crate::benchmark::paired(
+            "GIGA_PUBLIC_JPEG_DECODE 800x1137",
+            || {
+                black_box(baseline());
+            },
+            || {
+                black_box(new.solve_from_bytes(black_box(jpeg.to_vec())).unwrap());
+            },
+        );
+    }
+
+    #[test]
     #[ignore = "manual paired release benchmark; each interval lasts at least 50ms"]
     fn benchmark_giga_paired_abba() {
         use std::{hint::black_box, io::Cursor};
