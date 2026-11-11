@@ -50,10 +50,20 @@ jobs:
         run: |
           set -euo pipefail
           target/release/manga --version
-          tar -czf "manga-${TARGET}.tar.gz" -C target/release manga
+          mkdir package
+          cp target/release/manga package/manga
+          files=(manga)
+          if [[ -d THIRD_PARTY_NOTICES ]]; then
+            cp -R THIRD_PARTY_NOTICES package/THIRD_PARTY_NOTICES
+            files+=(THIRD_PARTY_NOTICES)
+          fi
+          tar -czf "manga-${TARGET}.tar.gz" -C package "${files[@]}"
           mkdir extracted
           tar -xzf "manga-${TARGET}.tar.gz" -C extracted
           extracted/manga --version
+          if [[ -d THIRD_PARTY_NOTICES ]]; then
+            diff -r THIRD_PARTY_NOTICES extracted/THIRD_PARTY_NOTICES
+          fi
       - name: Package and verify Windows binary
         if: runner.os == 'Windows'
         shell: pwsh
@@ -62,10 +72,31 @@ jobs:
         run: |
           & target/release/manga.exe --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Compress-Archive -Path target/release/manga.exe -DestinationPath "manga-$env:TARGET.zip"
+          New-Item -ItemType Directory -Path package | Out-Null
+          Copy-Item target/release/manga.exe package/manga.exe
+          if (Test-Path -Path THIRD_PARTY_NOTICES -PathType Container) {
+            Copy-Item -Recurse THIRD_PARTY_NOTICES package/THIRD_PARTY_NOTICES
+          }
+          Compress-Archive -Path package/* -DestinationPath "manga-$env:TARGET.zip"
           Expand-Archive -Path "manga-$env:TARGET.zip" -DestinationPath extracted
           & extracted/manga.exe --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Test-Path -Path THIRD_PARTY_NOTICES -PathType Container) {
+            if (-not (Test-Path -Path extracted/THIRD_PARTY_NOTICES -PathType Container)) {
+              throw 'The archive does not contain THIRD_PARTY_NOTICES.'
+            }
+            $source = (Resolve-Path THIRD_PARTY_NOTICES).Path
+            Get-ChildItem -Path $source -File -Recurse -Force | ForEach-Object {
+              $relative = $_.FullName.Substring($source.Length).TrimStart([char[]]'\/')
+              $copy = Join-Path extracted/THIRD_PARTY_NOTICES $relative
+              if (-not (Test-Path -LiteralPath $copy -PathType Leaf)) {
+                throw "The archive is missing notice: $relative"
+              }
+              if ((Get-FileHash -LiteralPath $_.FullName).Hash -ne (Get-FileHash -LiteralPath $copy).Hash) {
+                throw "The archived notice differs: $relative"
+              }
+            }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: manga-${{ matrix.target }}
