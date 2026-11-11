@@ -80,6 +80,7 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
 - [ ] [Comic FUZ](https://comic-fuz.com): deferred because its protobuf API is currently unstable; library code is available behind the `fuz` feature
 - [ ] [Manga Library Z](https://www.mangaz.com): deferred; library code is available behind the `mangaz` feature
 - [ ] [Piccoma](https://piccoma.com)
+- [ ] [YanMaga](https://yanmaga.jp): experimental anonymous full-episode support is available to library users behind the `yanmaga` feature; CLI detection is not enabled
 
 ## Architecture
 
@@ -91,3 +92,12 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
 The `manga` crate enables `comici`, `giga`, and `kadokomi` by default. Live-site smoke tests
 are ignored during normal test runs; fixture-based parsing and image-processing
 tests run offline.
+
+### Experimental YanMaga library support
+
+Enable the `manga` crate's `yanmaga` feature and use
+`manga::viewer::yanmaga::Pipeline` with the shared `EpisodePipeline` trait.
+The pipeline uses an anonymous cookie session and rejects viewer responses
+that provide only a trial or deny access. Episode output names currently use
+the episode ID. The viewer protocol may change; live tests are ignored by
+default. The feature enables reqwest's `cookies` support.
