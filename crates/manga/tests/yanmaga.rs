@@ -224,6 +224,35 @@ async fn live_pipeline_downloads_every_page() {
 }
 
 #[test]
+fn nondivisible_tiles_reject_holes_and_overlaps_but_accept_valid_identity() {
+    use manga::viewer::yanmaga::restore_image;
+    let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let valid = format!("HHHHHHHHHHHHHHHH{alphabet}");
+    let broken = format!("ABCDEFGHHGFEDCBA{alphabet}");
+    let image = image::RgbaImage::from_pixel(329, 329, image::Rgba([10, 20, 30, 255]));
+    let source = format!("=8-8-0-{valid}");
+    let destination = format!("=8-8+0-{valid}");
+    assert_eq!(
+        restore_image(image.clone(), &source, &destination).unwrap(),
+        image
+    );
+    let bad_source = format!("=8-8-0-{broken}");
+    let bad_destination = format!("=8-8+0-{broken}");
+    assert!(restore_image(image.clone(), &bad_source, &bad_destination).is_err());
+
+    // These maps pair equal-sized tiles, isolating coverage failures on each side.
+    let bad_edges = "AAFFCDABBBAAAFEC";
+    let valid_to_bad = "_-987546321zyxw0vusponmtlkjihfegcbaZXWVYTSRONMLQKIHFEDCJrqdUPGAB";
+    let bad_to_valid = "-_210z9yx3wutsr8vqpo7mlknjihg6edfcbaZYWVUT54SXRQONMLPKJIGFHEDCBA";
+    let bad_source = format!("=8-8-0-{bad_edges}{bad_to_valid}");
+    let bad_destination = format!("=8-8+0-{bad_edges}{valid_to_bad}");
+    for (src, dst) in [(&bad_source, &destination), (&source, &bad_destination)] {
+        let error = restore_image(image.clone(), src, dst).unwrap_err();
+        assert!(error.to_string().contains("overlapping YanMaga tiles"));
+    }
+}
+
+#[test]
 fn nondivisible_dimensions_reject_mapped_tiles_with_different_sizes() {
     use manga::viewer::yanmaga::restore_image;
     let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";

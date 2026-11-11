@@ -119,7 +119,7 @@ pub fn restore_image(
         rw > 0 && rh > 0 && cw * ch <= 20_000_000,
         "invalid YanMaga image dimensions"
     );
-    let mut output = image::RgbaImage::new(cw as u32, ch as u32);
+    let mut tiles = Vec::with_capacity(64);
     for i in 0..64 {
         let (col, row) = (i % 8, i / 8);
         let target = dst.pieces[src.pieces[i]];
@@ -153,6 +153,32 @@ pub fn restore_image(
                 && dy + th <= ch,
             "YanMaga tile outside image"
         );
+        // Remove each tile's padding before checking coverage of the source.
+        let (ux, uy) = (sx - (2 * col as i64 + 1) * p, sy - (2 * row as i64 + 1) * p);
+        ensure!(
+            ux >= 0 && uy >= 0 && ux + tw <= cw && uy + th <= ch,
+            "YanMaga source tile outside content"
+        );
+        for &(other_sx, other_sy, other_dx, other_dy, other_w, other_h) in &tiles {
+            let overlaps = |x: i64, y: i64, ox: i64, oy: i64| {
+                x < ox + other_w && ox < x + tw && y < oy + other_h && oy < y + th
+            };
+            ensure!(
+                !overlaps(ux, uy, other_sx, other_sy) && !overlaps(dx, dy, other_dx, other_dy),
+                "overlapping YanMaga tiles"
+            );
+        }
+        tiles.push((ux, uy, dx, dy, tw, th));
+    }
+    ensure!(
+        tiles.iter().map(|tile| tile.4 * tile.5).sum::<i64>() == cw * ch,
+        "incomplete YanMaga tile coverage"
+    );
+    let mut output = image::RgbaImage::new(cw as u32, ch as u32);
+    for (i, (ux, uy, dx, dy, tw, th)) in tiles.into_iter().enumerate() {
+        let (col, row) = (i % 8, i / 8);
+        let sx = ux + (2 * col as i64 + 1) * p;
+        let sy = uy + (2 * row as i64 + 1) * p;
         for y in 0..th {
             for x in 0..tw {
                 output.put_pixel(
