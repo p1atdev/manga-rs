@@ -77,7 +77,7 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
 - [x] [ChojuGiga Viewer](https://hatena.co.jp/solutions/gigaviewer) family: episode and series downloads are supported
 - [x] [Kadokomi (former ComicWalker)](https://comic-walker.com): episode download is supported
 - [x] [Comici Viewer](https://comici.co.jp/business/comici-plus) family: episode and series downloads are supported
-- [ ] [Comic FUZ](https://comic-fuz.com): deferred because its protobuf API is currently unstable; library code is available behind the `fuz` feature
+- [ ] [Comic FUZ](https://comic-fuz.com): experimental guest-free viewer v2 library pipeline is available behind the `fuz` feature; CLI detection is not enabled
 - [ ] [Manga Library Z](https://www.mangaz.com): deferred; library code is available behind the `mangaz` feature
 - [ ] [Piccoma](https://piccoma.com)
 
@@ -91,3 +91,12 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
 The `manga` crate enables `comici`, `giga`, and `kadokomi` by default. Live-site smoke tests
 are ignored during normal test runs; fixture-based parsing and image-processing
 tests run offline.
+
+### Experimental COMIC FUZ viewer v2
+
+With the `fuz` feature, use `manga::viewer::fuz::v2::Pipeline::for_work`
+and the shared `EpisodePipeline` trait. The work ID is required so the
+pipeline can confirm the chapter is explicitly guest-free before requesting
+its viewer. Each episode uses an isolated anonymous image-token session.
+The legacy FUZ API remains available. The feature enables reqwest cookies.
+Live tests are ignored by default and the viewer protocol may change.
