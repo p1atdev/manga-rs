@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod data;
+pub mod direct;
 pub mod error;
 #[cfg(feature = "giga")]
 pub(crate) mod feed;

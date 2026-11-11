@@ -428,6 +428,9 @@ dependencies = [
  "clap",
  "image",
  "manga",
+ "serde_json",
+ "sha2",
+ "tempfile",
  "tokio",
  "url",
  "zip",
@@ -1647,14 +1650,17 @@ dependencies = [
  "anyhow",
  "base64 0.23.1",
  "cbc",
+ "cc",
  "chrono",
  "cipher",
  "cookie",
+ "crc32fast",
  "feed-rs",
  "futures",
  "hex",
  "image",
  "indicatif",
+ "mozjpeg-sys",
  "num_cpus",
  "prost",
  "prost-build",
@@ -1741,6 +1747,17 @@ checksum = "bb85c154ba489f01b25c0d36ae69a87e4a1c73a72631fc6c0eb6dde34a73e44b"
 dependencies = [
  "num-traits",
  "pxfm",
+]
+
+[[package]]
+name = "mozjpeg-sys"
+version = "2.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f0dc668bf9bf888c88e2fb1ab16a406d2c380f1d082b20d51dd540ab2aa70c1"
+dependencies = [
+ "cc",
+ "dunce",
+ "libc",
 ]
 
 [[package]]
@@ -2987,6 +3004,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
