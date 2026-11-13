@@ -12,6 +12,8 @@ use manga::{
 };
 use url::Url;
 
+mod local;
+
 #[derive(Debug, Clone, Parser)]
 #[command(
     name = "manga",
@@ -31,6 +33,12 @@ enum Command {
 
     /// Download the available episodes in a supported series.
     Series(SeriesArgs),
+
+    /// Restore a local image, optionally using WebP fallback.
+    Decode(local::DecodeArgs),
+
+    /// Decrypt a local image without re-encoding it.
+    Decrypt(local::DecryptArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -145,6 +153,8 @@ async fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Episode(args) => download_episode(args).await,
         Command::Series(args) => download_series(args).await,
+        Command::Decode(args) => local::decode(args),
+        Command::Decrypt(args) => local::decrypt(args),
     }
 }
 
@@ -241,7 +251,7 @@ mod tests {
                 assert_eq!(args.download.format, OutputFormat::Cbz);
                 assert_eq!(args.download.image_format, ImageFormat::Png);
             }
-            Command::Series(_) => panic!("expected episode command"),
+            _ => panic!("expected episode command"),
         }
     }
 
@@ -259,7 +269,7 @@ mod tests {
                 assert_eq!(args.download.jobs, None);
                 assert_eq!(args.download.connections.get(), 8);
             }
-            Command::Episode(_) => panic!("expected series command"),
+            _ => panic!("expected series command"),
         }
     }
 
@@ -283,7 +293,7 @@ mod tests {
                 assert_eq!(args.download.jobs.map(NonZeroUsize::get), Some(3));
                 assert_eq!(args.download.connections.get(), 5);
             }
-            Command::Series(_) => panic!("expected episode command"),
+            _ => panic!("expected episode command"),
         }
     }
 

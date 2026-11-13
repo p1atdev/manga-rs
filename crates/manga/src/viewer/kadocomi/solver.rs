@@ -8,11 +8,7 @@ pub struct Solver {
     xor_key: [u8; 8],
 }
 
-fn xor_encrypt(data: &mut [u8], key: &[u8]) {
-    for (i, byte) in data.iter_mut().enumerate() {
-        *byte ^= key[i % key.len()];
-    }
-}
+use manga_image::viewer::kadocomi::solver::xor_encrypt;
 
 fn hex_to_bytes(hex: &str) -> Result<[u8; 8]> {
     ensure!(
