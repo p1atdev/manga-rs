@@ -1,0 +1,156 @@
+name: Release binaries
+
+on:
+  push:
+    tags: ['**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      # aws-lc-sys ships prebuilt NASM objects for Windows x86-64, so the
+      # build does not depend on NASM being installed on the runner.
+      - name: Configure Windows assembly
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '"AWS_LC_SYS_PREBUILT_NASM=1" >> $env:GITHUB_ENV'
+      - name: Build CLI
+        run: cargo build --locked --release -p cli
+      - name: Package and verify Unix binary
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          target/release/manga --version
+          mkdir package
+          cp target/release/manga package/manga
+          files=(manga)
+          if [[ -d THIRD_PARTY_NOTICES ]]; then
+            cp -R THIRD_PARTY_NOTICES package/THIRD_PARTY_NOTICES
+            files+=(THIRD_PARTY_NOTICES)
+          fi
+          tar -czf "manga-${TARGET}.tar.gz" -C package "${files[@]}"
+          mkdir extracted
+          tar -xzf "manga-${TARGET}.tar.gz" -C extracted
+          extracted/manga --version
+          if [[ -d THIRD_PARTY_NOTICES ]]; then
+            diff -r THIRD_PARTY_NOTICES extracted/THIRD_PARTY_NOTICES
+          fi
+      - name: Package and verify Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          & target/release/manga.exe --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Path package | Out-Null
+          Copy-Item target/release/manga.exe package/manga.exe
+          if (Test-Path -Path THIRD_PARTY_NOTICES -PathType Container) {
+            Copy-Item -Recurse THIRD_PARTY_NOTICES package/THIRD_PARTY_NOTICES
+          }
+          Compress-Archive -Path package/* -DestinationPath "manga-$env:TARGET.zip"
+          Expand-Archive -Path "manga-$env:TARGET.zip" -DestinationPath extracted
+          & extracted/manga.exe --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Test-Path -Path THIRD_PARTY_NOTICES -PathType Container) {
+            if (-not (Test-Path -Path extracted/THIRD_PARTY_NOTICES -PathType Container)) {
+              throw 'The archive does not contain THIRD_PARTY_NOTICES.'
+            }
+            $source = (Resolve-Path THIRD_PARTY_NOTICES).Path
+            Get-ChildItem -Path $source -File -Recurse -Force | ForEach-Object {
+              $relative = $_.FullName.Substring($source.Length).TrimStart([char[]]'\/')
+              $copy = Join-Path extracted/THIRD_PARTY_NOTICES $relative
+              if (-not (Test-Path -LiteralPath $copy -PathType Leaf)) {
+                throw "The archive is missing notice: $relative"
+              }
+              if ((Get-FileHash -LiteralPath $_.FullName).Hash -ne (Get-FileHash -LiteralPath $copy).Hash) {
+                throw "The archived notice differs: $relative"
+              }
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manga-${{ matrix.target }}
+          path: manga-${{ matrix.target }}.*
+          if-no-files-found: error
+          overwrite: true
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Verify artifacts and publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd dist
+          assets=(
+            manga-x86_64-unknown-linux-gnu.tar.gz
+            manga-aarch64-unknown-linux-gnu.tar.gz
+            manga-x86_64-apple-darwin.tar.gz
+            manga-aarch64-apple-darwin.tar.gz
+            manga-x86_64-pc-windows-msvc.zip
+          )
+          for asset in "${assets[@]}"; do test -s "$asset"; done
+          sha256sum "${assets[@]}" > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          assets+=(SHA256SUMS)
+
+          if state=$(gh release view "$TAG" --json isDraft --jq .isDraft); then
+            if [[ "$state" == false ]]; then
+              existing=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+              for asset in "${assets[@]}"; do
+                if ! grep -Fxq -- "$asset" <<< "$existing"; then
+                  echo "Published release is missing $asset; refusing to change it." >&2
+                  exit 1
+                fi
+              done
+              echo "Published release already contains all expected assets; leaving it unchanged."
+              exit 0
+            fi
+          else
+            gh release create "$TAG" --verify-tag --draft --generate-notes
+          fi
+          # A failed upload leaves a draft. A rerun replaces its draft assets.
+          gh release upload "$TAG" "${assets[@]}" --clobber
+          gh release edit "$TAG" --draft=false

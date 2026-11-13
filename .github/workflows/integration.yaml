@@ -1,0 +1,43 @@
+name: Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Rust checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install Protocol Buffers compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends protobuf-compiler
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Test library without default features
+        run: cargo test --locked -p manga --no-default-features
+      - name: Test workspace
+        run: cargo test --locked --workspace
+      - name: Test all features
+        run: cargo test --locked --workspace --all-features
+      - name: Clippy default features
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Clippy all features
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
