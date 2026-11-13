@@ -91,3 +91,18 @@ manga series https://shonenjumpplus.com/episode/17106371853091617526 \
 The `manga` crate enables `comici`, `giga`, and `kadokomi` by default. Live-site smoke tests
 are ignored during normal test runs; fixture-based parsing and image-processing
 tests run offline.
+
+### Image solver benchmarks
+
+Run the ignored release benchmark on the included public GigaViewer JPEG with:
+
+```sh
+cargo test --release -p manga benchmark_giga_public_jpeg_paired_abba -- --ignored --nocapture --test-threads=1
+```
+
+The benchmark checks pixel equality against the original solver and reports
+100 paired ABBA blocks for restoration alone and JPEG decoding plus
+restoration. Each measurement interval lasts at least 50 ms. It includes the
+same input cloning in both variants and excludes network and file writes.
+The confidence intervals are descriptive and can be affected by shared-host
+noise. The fixture's provenance is in the adjacent metadata file.
