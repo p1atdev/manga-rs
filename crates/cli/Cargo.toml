@@ -13,6 +13,6 @@ manga = { path = "../manga", default-features = false, features = ["comici", "gi
 anyhow = "1.0.104"
 clap = { version = "4.6.6", features = ["derive"] }
 url = "2.5.8"
-zip = "8.6.0"
+zip = "9.0.5"
 image = "0.25.10"
 tokio = "1.53.1"
